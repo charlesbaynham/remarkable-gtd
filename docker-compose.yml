@@ -1,0 +1,22 @@
+services:
+  gtd:
+    build: .
+    environment:
+      - GTD_REPO_URL=${GTD_REPO_URL}
+      - GTD_GIT_BRANCH=${GTD_GIT_BRANCH:-master}
+      - GTD_DIR=/data/gtd
+      - REMARKABLE_FOLDER=${REMARKABLE_FOLDER:-GTD Daily}
+      - OUTPUT_DIR=/data/output
+      - RMAPI_CONFIG=/data/.rmapi
+      - SSH_PRIVATE_KEY=${SSH_PRIVATE_KEY:-/run/secrets/ssh_private_key}
+    volumes:
+      - ./data:/data
+      - ./secrets:/run/secrets:ro
+      - /tmp:/tmp
+    secrets:
+      - ssh_private_key
+    command: gtd-daily
+
+secrets:
+  ssh_private_key:
+    file: ./secrets/ssh_private_key
