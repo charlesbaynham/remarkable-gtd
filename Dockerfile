@@ -13,11 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     wget \
     ca-certificates \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install rmapi (Go binary)
-RUN wget -qO- https://github.com/ddvk/rmapi/releases/latest/download/rmapi-linux.zip \
-    | funzip - > /usr/local/bin/rmapi \
+RUN wget -qO- https://github.com/ddvk/rmapi/releases/latest/download/rmapi-linux-amd64.tar.gz \
+    | tar -xzO > /usr/local/bin/rmapi \
     && chmod +x /usr/local/bin/rmapi
 
 # Install Python package
