@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "remarkable-gtd"
+version = "0.1.0"
+description = "GTD paper workflow for reMarkable 2 — PDF generation + machine-vision scanner"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+gen = [
+    "playwright>=1.40",
+    "pypdf>=4.0",
+    "Jinja2>=3.1",
+    "qrcode>=7.4",
+]
+scan = [
+    "opencv-python>=4.8",
+    "pyzbar>=0.1.9",
+    "pytesseract>=0.3.10",
+    "PyMuPDF>=1.23",
+]
+dev = [
+    "pytest",
+    "pdf2image",
+    "remarkable-gtd[gen]",
+    "remarkable-gtd[scan]",
+]
+
+[project.scripts]
+gtd-gen = "remarkable_gtd.gen.cli:main"
+gtd-scan = "remarkable_gtd.scan.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"remarkable_gtd.gen.assets" = ["*.css", "*.j2"]

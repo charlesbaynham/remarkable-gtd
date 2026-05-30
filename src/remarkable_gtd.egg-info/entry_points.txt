@@ -1,0 +1,3 @@
+[console_scripts]
+gtd-gen = remarkable_gtd.gen.cli:main
+gtd-scan = remarkable_gtd.scan.cli:main
