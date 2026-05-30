@@ -25,7 +25,7 @@
         devShells.default = pkgs.mkShell {
           name = "remarkable-gtd";
 
-          buildInputs = with pkgs; [
+          packages = with pkgs; [
             # Python package manager
             uv
 
@@ -34,7 +34,8 @@
             tesseract
             poppler-utils
 
-            # For playwright browser install
+            # Playwright browsers (must match playwright version in pyproject.toml)
+            # https://nixos.wiki/wiki/Playwright
             playwright-driver.browsers
 
             # For remarkable sync
@@ -44,6 +45,7 @@
           shellHook = ''
             export PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers}
             export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
+            export PLAYWRIGHT_HOST_PLATFORM_OVERRIDE="ubuntu-24.04"
             echo "remarkable-gtd dev shell"
             uv --version
           '';
