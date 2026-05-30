@@ -1,10 +1,10 @@
 """Unit tests for ink detection without rendering."""
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from remarkable_gtd.scan.ink import measure_fill, detect_box, select_one
+from remarkable_gtd.scan.ink import detect_box, measure_fill, select_one
 
 
 def test_white_box_no_fill():
@@ -22,7 +22,9 @@ def test_white_box_no_fill():
 
     # detect_box with default inset of 0.22 should exclude border
     roi = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
-    fill2, inked = detect_box(crop, roi, (36, 36), inner_inset_frac=0.22, threshold=0.06)
+    fill2, inked = detect_box(
+        crop, roi, (36, 36), inner_inset_frac=0.22, threshold=0.06
+    )
     assert fill2 < 0.06
     assert inked is False
 

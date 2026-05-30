@@ -1,4 +1,5 @@
 """Resolve tick marks into decisions JSON."""
+
 from __future__ import annotations
 
 BUCKET_ACTIONS = {

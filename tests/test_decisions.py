@@ -1,9 +1,8 @@
 """Unit tests for decision resolution."""
+
 from __future__ import annotations
 
-import pytest
-
-from remarkable_gtd.scan.decisions import resolve_task, build_decisions
+from remarkable_gtd.scan.decisions import build_decisions, resolve_task
 
 
 def test_resolve_task_done_wins_over_defer():

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """gtd-gen CLI entry point."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,13 +12,25 @@ from .generate import build_buckets, render_pdf
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="Generate the GTD reMarkable PDF (one tall page per bucket).")
+    p = argparse.ArgumentParser(
+        description="Generate the GTD reMarkable PDF (one tall page per bucket)."
+    )
     p.add_argument("tasks", help="Path to tasks JSON (see tasks.example.json).")
     p.add_argument("--out", default="gtd-sheet.pdf", help="Output PDF path.")
     p.add_argument("--date", default=None, help="Override sheet date (YYYY-MM-DD).")
-    p.add_argument("--html", default=None, help="Also dump per-bucket HTML (debug), e.g. debug.html.")
-    p.add_argument("--manifest", default=None, help="Manifest output path (default: <out>.manifest.json).")
-    p.add_argument("--no-manifest", action="store_true", help="Suppress manifest sidecar output.")
+    p.add_argument(
+        "--html",
+        default=None,
+        help="Also dump per-bucket HTML (debug), e.g. debug.html.",
+    )
+    p.add_argument(
+        "--manifest",
+        default=None,
+        help="Manifest output path (default: <out>.manifest.json).",
+    )
+    p.add_argument(
+        "--no-manifest", action="store_true", help="Suppress manifest sidecar output."
+    )
     args = p.parse_args(argv)
 
     data = json.loads(Path(args.tasks).read_text(encoding="utf-8"))
@@ -45,7 +58,9 @@ def main(argv=None) -> int:
         debug_html=Path(args.html) if args.html else None,
         manifest_path=manifest_path,
     )
-    print(f"✓ wrote {args.out}  ({the_date.isoformat()}, {len(build_buckets(data))} pages)")
+    print(
+        f"✓ wrote {args.out}  ({the_date.isoformat()}, {len(build_buckets(data))} pages)"
+    )
     return 0
 
 

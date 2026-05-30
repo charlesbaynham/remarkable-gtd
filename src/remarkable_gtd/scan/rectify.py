@@ -1,4 +1,5 @@
 """Registration mark detection and perspective rectification."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -52,38 +53,51 @@ def find_reg_marks(binary: np.ndarray) -> dict[str, tuple[float, float]]:
             CORNER_R = 80
             if name == "tl" and (bx >= CORNER_R or by >= CORNER_R):
                 continue
-            if name == "tr" and (bx + bw <= region.shape[1] - CORNER_R or by >= CORNER_R):
+            if name == "tr" and (
+                bx + bw <= region.shape[1] - CORNER_R or by >= CORNER_R
+            ):
                 continue
-            if name == "bl" and (bx >= CORNER_R or by + bh <= region.shape[0] - CORNER_R):
+            if name == "bl" and (
+                bx >= CORNER_R or by + bh <= region.shape[0] - CORNER_R
+            ):
                 continue
-            if name == "br" and (bx + bw <= region.shape[1] - CORNER_R or by + bh <= region.shape[0] - CORNER_R):
+            if name == "br" and (
+                bx + bw <= region.shape[1] - CORNER_R
+                or by + bh <= region.shape[0] - CORNER_R
+            ):
                 continue
             # Check plus-ness: high fill in center bands, low in corners
             cx = bx + bw // 2
             cy = by + bh // 2
-            h_band = inv[cy - max(1, bh // 6):cy + max(1, bh // 6), bx:bx + bw]
-            v_band = inv[by:by + bh, cx - max(1, bw // 6):cx + max(1, bw // 6)]
+            h_band = inv[cy - max(1, bh // 6) : cy + max(1, bh // 6), bx : bx + bw]
+            v_band = inv[by : by + bh, cx - max(1, bw // 6) : cx + max(1, bw // 6)]
             if h_band.size == 0 or v_band.size == 0:
                 continue
             h_fill = np.mean(h_band > 128) if h_band.size else 0
             v_fill = np.mean(v_band > 128) if v_band.size else 0
             corners = [
-                inv[by:by + bh // 3, bx:bx + bw // 3],
-                inv[by:by + bh // 3, bx + 2 * bw // 3:bx + bw],
-                inv[by + 2 * bh // 3:by + bh, bx:bx + bw // 3],
-                inv[by + 2 * bh // 3:by + bh, bx + 2 * bw // 3:bx + bw],
+                inv[by : by + bh // 3, bx : bx + bw // 3],
+                inv[by : by + bh // 3, bx + 2 * bw // 3 : bx + bw],
+                inv[by + 2 * bh // 3 : by + bh, bx : bx + bw // 3],
+                inv[by + 2 * bh // 3 : by + bh, bx + 2 * bw // 3 : bx + bw],
             ]
-            corner_fill = np.mean([np.mean(c > 128) for c in corners if c.size > 0]) if any(c.size > 0 for c in corners) else 1.0
+            corner_fill = (
+                np.mean([np.mean(c > 128) for c in corners if c.size > 0])
+                if any(c.size > 0 for c in corners)
+                else 1.0
+            )
             # Proximity to corner: prefer marks near the corner of the search region
             if name == "tl":
                 corner_dist = np.sqrt(bx**2 + by**2)
             elif name == "tr":
-                corner_dist = np.sqrt((region.shape[1] - bx)**2 + by**2)
+                corner_dist = np.sqrt((region.shape[1] - bx) ** 2 + by**2)
             elif name == "bl":
-                corner_dist = np.sqrt(bx**2 + (region.shape[0] - by)**2)
+                corner_dist = np.sqrt(bx**2 + (region.shape[0] - by) ** 2)
             else:  # br
-                corner_dist = np.sqrt((region.shape[1] - bx)**2 + (region.shape[0] - by)**2)
-            max_dist = np.sqrt(region.shape[1]**2 + region.shape[0]**2)
+                corner_dist = np.sqrt(
+                    (region.shape[1] - bx) ** 2 + (region.shape[0] - by) ** 2
+                )
+            max_dist = np.sqrt(region.shape[1] ** 2 + region.shape[0] ** 2)
             proximity = 1.0 - corner_dist / max_dist
             score = (h_fill + v_fill) * 0.4 - corner_fill * 0.2 + proximity * 0.4
             if score > best_score:
@@ -103,7 +117,9 @@ def find_reg_marks(binary: np.ndarray) -> dict[str, tuple[float, float]]:
     return marks
 
 
-def rectify(gray: np.ndarray, binary: np.ndarray, marks: dict, manifest_page: dict) -> tuple:
+def rectify(
+    gray: np.ndarray, binary: np.ndarray, marks: dict, manifest_page: dict
+) -> tuple:
     """Warp image so page corners align with manifest reg-mark positions.
     Returns (warped_gray, warped_binary, (canvas_w, canvas_h), residual_px)."""
     rois = manifest_page.get("rois", {})
@@ -117,15 +133,24 @@ def rectify(gray: np.ndarray, binary: np.ndarray, marks: dict, manifest_page: di
     canvas_h = int(round(canvas_w * render["h_px"] / render["w_px"]))
 
     src_pts = np.array([marks[k] for k in ["tl", "tr", "bl", "br"]], dtype=np.float32)
-    dst_pts = np.array([
-        ((rois[f"reg:{k}"]["x"] + rois[f"reg:{k}"]["w"] / 2) * canvas_w,
-         (rois[f"reg:{k}"]["y"] + rois[f"reg:{k}"]["h"] / 2) * canvas_h)
-        for k in ["tl", "tr", "bl", "br"]
-    ], dtype=np.float32)
+    dst_pts = np.array(
+        [
+            (
+                (rois[f"reg:{k}"]["x"] + rois[f"reg:{k}"]["w"] / 2) * canvas_w,
+                (rois[f"reg:{k}"]["y"] + rois[f"reg:{k}"]["h"] / 2) * canvas_h,
+            )
+            for k in ["tl", "tr", "bl", "br"]
+        ],
+        dtype=np.float32,
+    )
 
     M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-    warped_gray = cv2.warpPerspective(gray, M, (canvas_w, canvas_h), flags=cv2.INTER_LINEAR)
-    warped_binary = cv2.warpPerspective(binary, M, (canvas_w, canvas_h), flags=cv2.INTER_NEAREST)
+    warped_gray = cv2.warpPerspective(
+        gray, M, (canvas_w, canvas_h), flags=cv2.INTER_LINEAR
+    )
+    warped_binary = cv2.warpPerspective(
+        binary, M, (canvas_w, canvas_h), flags=cv2.INTER_NEAREST
+    )
 
     # Compute residual
     warped_marks = cv2.perspectiveTransform(src_pts.reshape(1, -1, 2), M).reshape(-1, 2)

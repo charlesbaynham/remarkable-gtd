@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """gtd-process CLI — annotation processing workflow: download, scan, apply, regenerate."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,7 +12,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from remarkable_gtd.rm.annotations import pdf_to_images, render_rmdoc
-from remarkable_gtd.rm.api import download, find_latest_gtd, mkdir, upload
+from remarkable_gtd.rm.api import download, find_latest_gtd
 from remarkable_gtd.vault.applier import apply_decisions
 from remarkable_gtd.vault.parser import build_tasks_json
 
@@ -75,7 +76,10 @@ def _git_commit_push(gtd_dir: Path) -> bool:
         check=False,
     )
     if commit_result.returncode != 0:
-        print(f"Warning: git commit failed: {commit_result.stderr.strip()}", file=sys.stderr)
+        print(
+            f"Warning: git commit failed: {commit_result.stderr.strip()}",
+            file=sys.stderr,
+        )
         return False
 
     # Push
@@ -87,7 +91,9 @@ def _git_commit_push(gtd_dir: Path) -> bool:
         check=False,
     )
     if push_result.returncode != 0:
-        print(f"Warning: git push failed: {push_result.stderr.strip()}", file=sys.stderr)
+        print(
+            f"Warning: git push failed: {push_result.stderr.strip()}", file=sys.stderr
+        )
         return False
 
     print("  ✓ committed and pushed changes")
@@ -159,14 +165,17 @@ def run_process(
     if not manifest_path:
         # Try to find any manifest in output_dir
         manifests = sorted(
-            f for f in output_dir.iterdir()
+            f
+            for f in output_dir.iterdir()
             if f.is_file() and f.name.endswith(".manifest.json")
         )
         if manifests:
             manifest_path = manifests[-1]
             print(f"  ⚠ using most recent manifest: {manifest_path.name}")
         else:
-            print("Error: No manifest file found. Run gtd-daily first.", file=sys.stderr)
+            print(
+                "Error: No manifest file found. Run gtd-daily first.", file=sys.stderr
+            )
             return 1
     else:
         print(f"  ✓ manifest: {manifest_path.name}")
@@ -178,11 +187,16 @@ def run_process(
     # Use gtd-scan-pdf CLI for multi-page PDF scanning
     scan_result = subprocess.run(
         [
-            sys.executable, "-m", "remarkable_gtd.cli.scan_pdf",
+            sys.executable,
+            "-m",
+            "remarkable_gtd.cli.scan_pdf",
             str(annotated_pdf),
-            "--manifest", str(manifest_path),
-            "--ocr", "tesseract",
-            "-o", str(decisions_path),
+            "--manifest",
+            str(manifest_path),
+            "--ocr",
+            "tesseract",
+            "-o",
+            str(decisions_path),
         ],
         capture_output=True,
         text=True,

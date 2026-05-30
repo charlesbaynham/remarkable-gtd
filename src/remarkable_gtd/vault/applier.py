@@ -1,13 +1,10 @@
 """Apply scanned decisions back to the Obsidian GTD vault."""
+
 from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
-from datetime import date
 from pathlib import Path
-from typing import Callable
-
 
 # Action → (source_bucket, target_bucket) mapping
 ACTION_TARGETS = {
@@ -285,7 +282,9 @@ def apply_captures(captures: list[dict], gtd_dir: Path) -> list[str]:
     return results
 
 
-def apply_decisions(decisions_path: Path, tasks_json_path: Path, gtd_dir: Path) -> list[str]:
+def apply_decisions(
+    decisions_path: Path, tasks_json_path: Path, gtd_dir: Path
+) -> list[str]:
     """Apply all decisions from a decisions JSON file to the GTD vault.
 
     Returns list of human-readable operation descriptions.

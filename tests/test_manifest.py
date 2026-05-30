@@ -1,8 +1,8 @@
 """Tests for manifest generation and ROI validity."""
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -55,7 +55,9 @@ def test_rects_normalized(rendered_sheet):
         for roi_key, rect in page["rois"].items():
             for coord in ["x", "y", "w", "h"]:
                 assert coord in rect, f"Missing {coord} in {roi_key}"
-                assert 0.0 <= rect[coord] <= 1.0, f"{roi_key}.{coord} = {rect[coord]} not in [0,1]"
+                assert (
+                    0.0 <= rect[coord] <= 1.0
+                ), f"{roi_key}.{coord} = {rect[coord]} not in [0,1]"
 
 
 def test_reg_marks_in_corners(rendered_sheet):
@@ -108,19 +110,20 @@ def test_no_box_overlap_same_task(rendered_sheet):
             for i, r1 in enumerate(rects):
                 for j, r2 in enumerate(rects):
                     if i < j and r1.overlaps(r2):
-                        pytest.fail(f"Overlap for {task_id}: {box_keys[i]} and {box_keys[j]}")
+                        pytest.fail(
+                            f"Overlap for {task_id}: {box_keys[i]} and {box_keys[j]}"
+                        )
 
 
 def test_visual_stability(rendered_sheet):
     """Rasterize output PDF and verify QR codes decode."""
-    import qrcode
-    from remarkable_gtd.gen.generate import qr_datauri
 
     pdf_path, manifest_path = rendered_sheet
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     # Just verify the PDF exists and has pages
     import fitz
+
     doc = fitz.open(str(pdf_path))
     assert doc.page_count == len(manifest["pages"])
     doc.close()

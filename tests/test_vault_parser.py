@@ -1,4 +1,5 @@
 """Tests for vault parser."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -54,8 +55,7 @@ def sample_vault(tmp_path: Path) -> Path:
     tickler = gtd / "Tickler"
     tickler.mkdir()
     (tickler / "Next week.md").write_text(
-        "Check camera-ready instructions\n"
-        "Follow up with Tom about consent forms\n",
+        "Check camera-ready instructions\n" "Follow up with Tom about consent forms\n",
         encoding="utf-8",
     )
     (tickler / "Next month.md").write_text(
@@ -66,8 +66,7 @@ def sample_vault(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (tickler / "Next quarter.md").write_text(
-        "Reassess survey paper scope\n"
-        "Plan next round of PhD recruitment\n",
+        "Reassess survey paper scope\n" "Plan next round of PhD recruitment\n",
         encoding="utf-8",
     )
 

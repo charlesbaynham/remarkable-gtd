@@ -1,4 +1,5 @@
 """Parse Obsidian GTD vault into tasks.json format for gtd-gen."""
+
 from __future__ import annotations
 
 import re
@@ -108,13 +109,15 @@ def parse_next_actions(path: Path) -> list[dict]:
         except ValueError:
             pri = 0
 
-        actions.append({
-            "id": f"NA-{i:02d}",
-            "pri": pri,
-            "due": due,
-            "proj": proj,
-            "act": action_text,
-        })
+        actions.append(
+            {
+                "id": f"NA-{i:02d}",
+                "pri": pri,
+                "due": due,
+                "proj": proj,
+                "act": action_text,
+            }
+        )
     return actions
 
 
@@ -137,14 +140,16 @@ def parse_delegated(path: Path) -> list[dict]:
         to = row.get("person", "").strip()
         due = row.get("chase by", "").strip()
 
-        actions.append({
-            "id": f"DG-{i:02d}",
-            "pri": 0,
-            "due": due,
-            "proj": "",
-            "to": to,
-            "act": action_text,
-        })
+        actions.append(
+            {
+                "id": f"DG-{i:02d}",
+                "pri": 0,
+                "due": due,
+                "proj": "",
+                "to": to,
+                "act": action_text,
+            }
+        )
     return actions
 
 

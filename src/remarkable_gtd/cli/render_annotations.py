@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """gtd-render-annotations CLI entry point."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,7 +10,9 @@ from remarkable_gtd.rm.annotations import render_rmdoc
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="Render reMarkable annotations from an rmdoc file onto a flat PDF.")
+    p = argparse.ArgumentParser(
+        description="Render reMarkable annotations from an rmdoc file onto a flat PDF."
+    )
     p.add_argument("rmdoc", help="Path to .rmdoc file.")
     p.add_argument("output_pdf", help="Path to output PDF.")
     args = p.parse_args(argv)

@@ -1,4 +1,5 @@
 """Scan pipeline orchestrator."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,18 +8,18 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from .manifest_io import get_page, list_page_keys, load_manifest
-from .rectify import RegistrationError, find_reg_marks, rectify
-from .qr import decode_header, decode_task_qrs
-from .ink import detect_box, roi_to_pixels, select_one
-from .ocr import get_engine
 from .decisions import (
     BUCKET_ACTIONS,
     DEFER_KEYS,
     REDEFER_KEYS,
-    resolve_task,
     build_decisions,
+    resolve_task,
 )
+from .ink import detect_box, roi_to_pixels, select_one
+from .manifest_io import get_page, list_page_keys
+from .ocr import get_engine
+from .qr import decode_header, decode_task_qrs
+from .rectify import find_reg_marks, rectify
 
 
 @dataclass
@@ -45,6 +46,7 @@ def run_scan(
     try:
         import PIL.Image as Image
         import PIL.ImageOps as ImageOps
+
         pil_img = Image.open(image_path)
         pil_img = ImageOps.exif_transpose(pil_img)
         if pil_img.mode != "RGB":
@@ -75,7 +77,9 @@ def run_scan(
     )
     rectify_meta = {
         "residual_px": round(residual, 2),
-        "reg_marks_found": {k: [round(v[0], 2), round(v[1], 2)] for k, v in marks.items()},
+        "reg_marks_found": {
+            k: [round(v[0], 2), round(v[1], 2)] for k, v in marks.items()
+        },
     }
 
     # 4. QR decode
@@ -104,8 +108,11 @@ def run_scan(
             if verb.startswith("slot_") or verb == "act" or verb == "qr":
                 continue
             fill, inked = detect_box(
-                warped_binary, roi, canvas_size,
-                cfg.inner_inset_frac, cfg.ink_fill_threshold,
+                warped_binary,
+                roi,
+                canvas_size,
+                cfg.inner_inset_frac,
+                cfg.ink_fill_threshold,
             )
             ticks[verb] = (fill, inked)
 
@@ -125,14 +132,20 @@ def run_scan(
                 act_img = warped_gray[y1:y2, x1:x2]
                 if act_img.size > 0:
                     rgb = cv2.cvtColor(act_img, cv2.COLOR_GRAY2RGB)
-                    field_texts["act"] = {"text": ocr.read(rgb, hint="paragraph"), "ocr_conf": None}
+                    field_texts["act"] = {
+                        "text": ocr.read(rgb, hint="paragraph"),
+                        "ocr_conf": None,
+                    }
 
         # OCR slots if ink present
         for slot_key in ["slot_priority", "slot_due", "slot_project", "slot_to"]:
             if slot_key in verbs:
                 fill, inked = detect_box(
-                    warped_binary, verbs[slot_key], canvas_size,
-                    cfg.inner_inset_frac, cfg.ink_fill_threshold,
+                    warped_binary,
+                    verbs[slot_key],
+                    canvas_size,
+                    cfg.inner_inset_frac,
+                    cfg.ink_fill_threshold,
                 )
                 if inked:
                     x1, y1, x2, y2 = roi_to_pixels(verbs[slot_key], canvas_size)
@@ -140,7 +153,10 @@ def run_scan(
                     if slot_img.size > 0:
                         rgb = cv2.cvtColor(slot_img, cv2.COLOR_GRAY2RGB)
                         text = ocr.read(rgb, hint="slot")
-                        field_texts[slot_key.replace("slot_", "")] = {"text": text, "ocr_conf": None}
+                        field_texts[slot_key.replace("slot_", "")] = {
+                            "text": text,
+                            "ocr_conf": None,
+                        }
 
         task_entry = resolve_task(task_id, ticks, bucket, field_texts, edited)
         task_results.append(task_entry)
@@ -150,8 +166,11 @@ def run_scan(
     for key, roi in rois.items():
         if key.startswith("capture:") and key.endswith(":line"):
             fill, inked = detect_box(
-                warped_binary, roi, canvas_size,
-                cfg.inner_inset_frac, cfg.ink_fill_threshold,
+                warped_binary,
+                roi,
+                canvas_size,
+                cfg.inner_inset_frac,
+                cfg.ink_fill_threshold,
             )
             cap_text = ""
             if inked:
@@ -160,16 +179,23 @@ def run_scan(
                 if cap_img.size > 0:
                     rgb = cv2.cvtColor(cap_img, cv2.COLOR_GRAY2RGB)
                     cap_text = ocr.read(rgb, hint="single_line")
-            captures.append({
-                "line": key,
-                "text": cap_text,
-                "inked": inked,
-                "ocr_conf": None,
-            })
+            captures.append(
+                {
+                    "line": key,
+                    "text": cap_text,
+                    "inked": inked,
+                    "ocr_conf": None,
+                }
+            )
 
     decisions = build_decisions(
-        bucket, task_results, captures, rectify_meta,
-        header_qr, str(image_path), "",
+        bucket,
+        task_results,
+        captures,
+        rectify_meta,
+        header_qr,
+        str(image_path),
+        "",
         the_date,
     )
     return decisions

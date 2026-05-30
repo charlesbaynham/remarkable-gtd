@@ -1,4 +1,5 @@
 """OCR engine protocol + implementations."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -8,6 +9,7 @@ import numpy as np
 
 class OcrEngine(Protocol):
     name: str
+
     def read(self, image_rgb: np.ndarray, hint: str | None = None) -> str: ...
 
 

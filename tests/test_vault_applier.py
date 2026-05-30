@@ -1,4 +1,5 @@
 """Tests for vault applier."""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,6 @@ import pytest
 
 from remarkable_gtd.vault.applier import (
     apply_decisions,
-    apply_task_decision,
 )
 
 
@@ -58,12 +58,31 @@ def tasks_json(sample_vault: Path) -> Path:
             {"act": "Book flights"},
         ],
         "next": [
-            {"id": "NA-01", "pri": 7, "due": "30 May", "proj": "EPSRC", "act": "Give Oliver final copy"},
+            {
+                "id": "NA-01",
+                "pri": 7,
+                "due": "30 May",
+                "proj": "EPSRC",
+                "act": "Give Oliver final copy",
+            },
             {"id": "NA-02", "pri": 6, "due": "2 Jun", "proj": "", "act": "Submit EOIs"},
-            {"id": "NA-03", "pri": 5, "due": "3 Jun", "proj": "epsrc", "act": "Draft impact statement"},
+            {
+                "id": "NA-03",
+                "pri": 5,
+                "due": "3 Jun",
+                "proj": "epsrc",
+                "act": "Draft impact statement",
+            },
         ],
         "delegated": [
-            {"id": "DG-01", "pri": 0, "due": "1 Jun", "proj": "", "to": "Oliver", "act": "Run full sweep"},
+            {
+                "id": "DG-01",
+                "pri": 0,
+                "due": "1 Jun",
+                "proj": "",
+                "to": "Oliver",
+                "act": "Run full sweep",
+            },
         ],
         "tickler": {
             "week": [{"act": "Check camera-ready instructions"}],
@@ -80,7 +99,14 @@ def test_apply_done_removes_from_next(sample_vault: Path, tasks_json: Path) -> N
     decisions = {
         "schema": "gtd.decisions/1",
         "tasks": [
-            {"id": "NA-01", "action": "done", "edited": False, "fields": {}, "ticks": {}, "warnings": []},
+            {
+                "id": "NA-01",
+                "action": "done",
+                "edited": False,
+                "fields": {},
+                "ticks": {},
+                "warnings": [],
+            },
         ],
         "captures": [],
         "warnings": [],
@@ -97,11 +123,20 @@ def test_apply_done_removes_from_next(sample_vault: Path, tasks_json: Path) -> N
     assert "Submit EOIs" in next_text  # NA-02 should still be there
 
 
-def test_apply_to_deleg_moves_to_delegated(sample_vault: Path, tasks_json: Path) -> None:
+def test_apply_to_deleg_moves_to_delegated(
+    sample_vault: Path, tasks_json: Path
+) -> None:
     decisions = {
         "schema": "gtd.decisions/1",
         "tasks": [
-            {"id": "NA-02", "action": "to_deleg", "edited": False, "fields": {}, "ticks": {}, "warnings": []},
+            {
+                "id": "NA-02",
+                "action": "to_deleg",
+                "edited": False,
+                "fields": {},
+                "ticks": {},
+                "warnings": [],
+            },
         ],
         "captures": [],
         "warnings": [],
@@ -109,7 +144,7 @@ def test_apply_to_deleg_moves_to_delegated(sample_vault: Path, tasks_json: Path)
     decisions_path = sample_vault / "decisions.json"
     decisions_path.write_text(json.dumps(decisions), encoding="utf-8")
 
-    results = apply_decisions(decisions_path, tasks_json, sample_vault)
+    apply_decisions(decisions_path, tasks_json, sample_vault)
 
     next_text = (sample_vault / "Next actions.md").read_text(encoding="utf-8")
     assert "Submit EOIs" not in next_text
@@ -123,14 +158,19 @@ def test_apply_captures_to_inbox(sample_vault: Path, tasks_json: Path) -> None:
         "schema": "gtd.decisions/1",
         "tasks": [],
         "captures": [
-            {"line": "capture:N1:line", "text": "New idea: extend model", "inked": True, "ocr_conf": None},
+            {
+                "line": "capture:N1:line",
+                "text": "New idea: extend model",
+                "inked": True,
+                "ocr_conf": None,
+            },
         ],
         "warnings": [],
     }
     decisions_path = sample_vault / "decisions.json"
     decisions_path.write_text(json.dumps(decisions), encoding="utf-8")
 
-    results = apply_decisions(decisions_path, tasks_json, sample_vault)
+    apply_decisions(decisions_path, tasks_json, sample_vault)
 
     inbox_text = (sample_vault / "Inbox.md").read_text(encoding="utf-8")
     assert "New idea: extend model" in inbox_text
@@ -143,7 +183,14 @@ def test_apply_no_action_noop(sample_vault: Path, tasks_json: Path) -> None:
     decisions = {
         "schema": "gtd.decisions/1",
         "tasks": [
-            {"id": "NA-01", "action": "none", "edited": False, "fields": {}, "ticks": {}, "warnings": []},
+            {
+                "id": "NA-01",
+                "action": "none",
+                "edited": False,
+                "fields": {},
+                "ticks": {},
+                "warnings": [],
+            },
         ],
         "captures": [],
         "warnings": [],

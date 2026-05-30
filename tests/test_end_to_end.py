@@ -1,12 +1,11 @@
 """End-to-end integration test: render → paint ink → scan → verify decisions."""
+
 from __future__ import annotations
 
 import json
 from datetime import date
-from pathlib import Path
 
 import cv2
-import numpy as np
 import pytest
 
 pytestmark = pytest.mark.usefixtures("_playwright_available")
@@ -15,8 +14,8 @@ pytestmark = pytest.mark.usefixtures("_playwright_available")
 def test_e2e_done_tick(tmp_path, tasks_min_path):
     """Render tasks.min.json, paint a 'done' tick on NA-01, run_scan, assert action=='done'."""
     from remarkable_gtd.gen.generate import render_pdf
-    from remarkable_gtd.scan.pipeline import run_scan, ScanConfig
-    from tests.conftest import rasterize_page, paint_ink
+    from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
+    from tests.conftest import paint_ink, rasterize_page
 
     data = json.loads(tasks_min_path.read_text(encoding="utf-8"))
     pdf_path = tmp_path / "sheet.pdf"
@@ -52,14 +51,16 @@ def test_e2e_done_tick(tmp_path, tasks_min_path):
 
     # Find NA-01 task result
     na01 = next((t for t in decisions["tasks"] if t["id"] == "NA-01"), None)
-    assert na01 is not None, f"NA-01 not found in decisions. Tasks: {[t['id'] for t in decisions['tasks']]}"
+    assert (
+        na01 is not None
+    ), f"NA-01 not found in decisions. Tasks: {[t['id'] for t in decisions['tasks']]}"
     assert na01["action"] == "done", f"Expected action='done', got {na01['action']}"
 
 
 def test_e2e_no_ticks_all_none(tmp_path, tasks_min_path):
     """Render with no ticks → all actions are 'none'."""
     from remarkable_gtd.gen.generate import render_pdf
-    from remarkable_gtd.scan.pipeline import run_scan, ScanConfig
+    from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
     from tests.conftest import rasterize_page
 
     data = json.loads(tasks_min_path.read_text(encoding="utf-8"))
@@ -88,4 +89,6 @@ def test_e2e_no_ticks_all_none(tmp_path, tasks_min_path):
     decisions = run_scan(image_path, manifest, cfg, page_key=next_key)
 
     for task in decisions["tasks"]:
-        assert task["action"] == "none", f"Task {task['id']} action={task['action']} (expected none)"
+        assert (
+            task["action"] == "none"
+        ), f"Task {task['id']} action={task['action']} (expected none)"

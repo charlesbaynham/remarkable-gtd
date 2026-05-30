@@ -1,4 +1,5 @@
 """Tests for registration mark detection and rectification."""
+
 from __future__ import annotations
 
 import cv2
@@ -32,12 +33,8 @@ def test_find_reg_marks_synthetic():
         _make_cross(img, cx, cy, size=30, thickness=3)
 
     # Apply a mild perspective transform (keystone)
-    src_pts = np.float32([
-        [0, 0], [w, 0], [0, h], [w, h]
-    ])
-    dst_pts = np.float32([
-        [20, 10], [w - 15, 25], [5, h - 20], [w - 10, h - 15]
-    ])
+    src_pts = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
+    dst_pts = np.float32([[20, 10], [w - 15, 25], [5, h - 20], [w - 10, h - 15]])
     M = cv2.getPerspectiveTransform(src_pts, dst_pts)
     warped = cv2.warpPerspective(img, M, (w, h), borderValue=255)
 
@@ -51,9 +48,7 @@ def test_find_reg_marks_synthetic():
     for name in ["tl", "tr", "bl", "br"]:
         assert name in found
         # Should be close to the warped position
-        expected = cv2.perspectiveTransform(
-            np.float32([[marks_px[name]]]), M
-        )[0][0]
+        expected = cv2.perspectiveTransform(np.float32([[marks_px[name]]]), M)[0][0]
         error = np.linalg.norm(np.array(found[name]) - expected)
         assert error < 5, f"{name} mark off by {error:.1f}px"
 
@@ -95,12 +90,8 @@ def test_rectify_residual():
         _make_cross(img, cx, cy, size=30, thickness=3)
 
     # Mild keystone
-    src_pts = np.float32([
-        [0, 0], [w, 0], [0, h], [w, h]
-    ])
-    dst_pts = np.float32([
-        [20, 10], [w - 15, 25], [5, h - 20], [w - 10, h - 15]
-    ])
+    src_pts = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
+    dst_pts = np.float32([[20, 10], [w - 15, 25], [5, h - 20], [w - 10, h - 15]])
     M = cv2.getPerspectiveTransform(src_pts, dst_pts)
     warped = cv2.warpPerspective(img, M, (w, h), borderValue=255)
 
@@ -116,7 +107,12 @@ def test_rectify_residual():
             "reg:tl": {"x": 50 / w, "y": 50 / h, "w": 0.05, "h": 0.05},
             "reg:tr": {"x": (w - 50) / w - 0.05, "y": 50 / h, "w": 0.05, "h": 0.05},
             "reg:bl": {"x": 50 / w, "y": (h - 50) / h - 0.05, "w": 0.05, "h": 0.05},
-            "reg:br": {"x": (w - 50) / w - 0.05, "y": (h - 50) / h - 0.05, "w": 0.05, "h": 0.05},
+            "reg:br": {
+                "x": (w - 50) / w - 0.05,
+                "y": (h - 50) / h - 0.05,
+                "w": 0.05,
+                "h": 0.05,
+            },
             "page:qr": {"x": 0.5, "y": 0.1, "w": 0.1, "h": 0.1},
         },
     }

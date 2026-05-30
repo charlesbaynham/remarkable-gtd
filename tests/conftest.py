@@ -1,4 +1,5 @@
 """Shared pytest fixtures."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,9 +21,10 @@ def _playwright_available():
 @pytest.fixture
 def rendered_sheet(tmp_path, tasks_min_path, _playwright_available):
     """Render tasks.min.json → (pdf_path, manifest_path)."""
-    from datetime import date
-    from remarkable_gtd.gen.generate import render_pdf
     import json
+    from datetime import date
+
+    from remarkable_gtd.gen.generate import render_pdf
 
     data = json.loads(tasks_min_path.read_text(encoding="utf-8"))
     pdf_path = tmp_path / "sheet.pdf"
@@ -39,7 +41,9 @@ def rasterize_page(pdf_path: Path, page_index: int = 0, dpi: int = 226) -> np.nd
     page = doc.load_page(page_index)
     mat = fitz.Matrix(dpi / 72, dpi / 72)
     pix = page.get_pixmap(matrix=mat)
-    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+        pix.height, pix.width, pix.n
+    )
     doc.close()
     if img.shape[2] == 4:
         # RGBA → RGB
@@ -60,6 +64,7 @@ def paint_ink(
         - "text:<str>": write text
     """
     from PIL import Image, ImageDraw, ImageFont
+
     from remarkable_gtd.scan.ink import roi_to_pixels
 
     roi = manifest_page["rois"][roi_key]
@@ -77,7 +82,9 @@ def paint_ink(
         text = style[5:]
         # Try to get a font, fall back to default
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14
+            )
         except Exception:
             font = ImageFont.load_default()
         draw.text((x1 + 2, y1 + 2), text, fill=(0, 0, 0), font=font)

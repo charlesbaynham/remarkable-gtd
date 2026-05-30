@@ -17,6 +17,7 @@ so we render the *approved* HTML/CSS in headless Chromium, measure each
 section's pixel height, and emit a page cut to fit. Bonus: the PDF is a
 pixel-for-pixel match of ../GTD Sheet.html (same gtd.css).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,9 +28,9 @@ from datetime import date, datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PX_PER_MM = 96.0 / 25.4          # CSS px per mm at 96 dpi (Chromium print unit)
-PAGE_W_MM = 157.8                # reMarkable 2 panel width
-HEIGHT_PAD_MM = 0.6              # guard against rounding overflow to a 2nd page
+PX_PER_MM = 96.0 / 25.4  # CSS px per mm at 96 dpi (Chromium print unit)
+PAGE_W_MM = 157.8  # reMarkable 2 panel width
+HEIGHT_PAD_MM = 0.6  # guard against rounding overflow to a 2nd page
 
 
 # --------------------------------------------------------------------------
@@ -75,27 +76,58 @@ def build_buckets(data: dict) -> list[dict]:
     tick_total = len(week) + len(month) + len(quarter)
 
     buckets = [
-        {"key": "inbox", "tag": "0", "title": "Inbox",
-         "sub": "Unprocessed capture — route every item out today",
-         "count_label": f"{len(inbox)} to process",
-         "kind": "flat", "items": inbox, "capture": 6},
-        {"key": "next", "tag": "1", "title": "Next Actions",
-         "sub": "On your plate — do, delegate, or defer",
-         "count_label": f"{len(nxt)} actions",
-         "kind": "flat", "items": nxt, "capture": 0},
-        {"key": "delegated", "tag": "2", "title": "Delegated",
-         "sub": "Waiting on others — follow up or reclaim",
-         "count_label": f"{len(deleg)} waiting",
-         "kind": "flat", "items": deleg, "capture": 0},
-        {"key": "tickler", "tag": "3", "title": "Tickler",
-         "sub": "Deferred — resurface when the time comes",
-         "count_label": f"{tick_total} parked",
-         "kind": "sectioned", "capture": 0,
-         "sections": [
-             {"title": "Next week", "sub": "resurfaces in ~7 days", "items": week},
-             {"title": "Next month", "sub": "resurfaces in ~30 days", "items": month},
-             {"title": "Next quarter", "sub": "resurfaces in ~90 days", "items": quarter},
-         ]},
+        {
+            "key": "inbox",
+            "tag": "0",
+            "title": "Inbox",
+            "sub": "Unprocessed capture — route every item out today",
+            "count_label": f"{len(inbox)} to process",
+            "kind": "flat",
+            "items": inbox,
+            "capture": 6,
+        },
+        {
+            "key": "next",
+            "tag": "1",
+            "title": "Next Actions",
+            "sub": "On your plate — do, delegate, or defer",
+            "count_label": f"{len(nxt)} actions",
+            "kind": "flat",
+            "items": nxt,
+            "capture": 0,
+        },
+        {
+            "key": "delegated",
+            "tag": "2",
+            "title": "Delegated",
+            "sub": "Waiting on others — follow up or reclaim",
+            "count_label": f"{len(deleg)} waiting",
+            "kind": "flat",
+            "items": deleg,
+            "capture": 0,
+        },
+        {
+            "key": "tickler",
+            "tag": "3",
+            "title": "Tickler",
+            "sub": "Deferred — resurface when the time comes",
+            "count_label": f"{tick_total} parked",
+            "kind": "sectioned",
+            "capture": 0,
+            "sections": [
+                {"title": "Next week", "sub": "resurfaces in ~7 days", "items": week},
+                {
+                    "title": "Next month",
+                    "sub": "resurfaces in ~30 days",
+                    "items": month,
+                },
+                {
+                    "title": "Next quarter",
+                    "sub": "resurfaces in ~90 days",
+                    "items": quarter,
+                },
+            ],
+        },
     ]
     for i, b in enumerate(buckets, start=1):
         b["page_no"] = i
@@ -134,7 +166,9 @@ def render_bucket_html(tmpl, bucket, total, the_date) -> str:
     )
 
 
-def render_pdf(data: dict, the_date: date, out_path: Path, debug_html: Path | None = None):
+def render_pdf(
+    data: dict, the_date: date, out_path: Path, debug_html: Path | None = None
+):
     from playwright.sync_api import sync_playwright
     from pypdf import PdfReader, PdfWriter
 
@@ -149,7 +183,9 @@ def render_pdf(data: dict, the_date: date, out_path: Path, debug_html: Path | No
         for b in buckets:
             html = render_bucket_html(tmpl, b, total, the_date)
             if debug_html:
-                Path(f"{debug_html.stem}-{b['key']}{debug_html.suffix}").write_text(html, encoding="utf-8")
+                Path(f"{debug_html.stem}-{b['key']}{debug_html.suffix}").write_text(
+                    html, encoding="utf-8"
+                )
 
             page.set_content(html, wait_until="networkidle")
             page.emulate_media(media="print")
@@ -179,11 +215,17 @@ def render_pdf(data: dict, the_date: date, out_path: Path, debug_html: Path | No
 # CLI
 # --------------------------------------------------------------------------
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="Generate the GTD reMarkable PDF (one tall page per bucket).")
+    p = argparse.ArgumentParser(
+        description="Generate the GTD reMarkable PDF (one tall page per bucket)."
+    )
     p.add_argument("tasks", help="Path to tasks JSON (see tasks.example.json).")
     p.add_argument("--out", default="gtd-sheet.pdf", help="Output PDF path.")
     p.add_argument("--date", default=None, help="Override sheet date (YYYY-MM-DD).")
-    p.add_argument("--html", default=None, help="Also dump per-bucket HTML (debug), e.g. debug.html.")
+    p.add_argument(
+        "--html",
+        default=None,
+        help="Also dump per-bucket HTML (debug), e.g. debug.html.",
+    )
     args = p.parse_args(argv)
 
     data = json.loads(Path(args.tasks).read_text(encoding="utf-8"))
@@ -196,7 +238,9 @@ def main(argv=None) -> int:
         the_date = date.today()
 
     render_pdf(data, the_date, Path(args.out), Path(args.html) if args.html else None)
-    print(f"✓ wrote {args.out}  ({the_date.isoformat()}, {len(build_buckets(data))} pages)")
+    print(
+        f"✓ wrote {args.out}  ({the_date.isoformat()}, {len(build_buckets(data))} pages)"
+    )
     return 0
 
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """gtd-scan CLI entry point."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,12 +12,20 @@ from .pipeline import ScanConfig, run_scan
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="Scan a marked GTD sheet and produce decisions JSON.")
+    p = argparse.ArgumentParser(
+        description="Scan a marked GTD sheet and produce decisions JSON."
+    )
     p.add_argument("image", help="Path to scanned/photographed sheet image.")
     p.add_argument("--manifest", required=True, help="Path to manifest JSON.")
-    p.add_argument("--page", default=None, help="Page key from manifest (auto if only one page).")
-    p.add_argument("--ocr", default="null", choices=["null", "tesseract"], help="OCR engine.")
-    p.add_argument("-o", "--output", default="decisions.json", help="Output decisions JSON path.")
+    p.add_argument(
+        "--page", default=None, help="Page key from manifest (auto if only one page)."
+    )
+    p.add_argument(
+        "--ocr", default="null", choices=["null", "tesseract"], help="OCR engine."
+    )
+    p.add_argument(
+        "-o", "--output", default="decisions.json", help="Output decisions JSON path."
+    )
     args = p.parse_args(argv)
 
     manifest = load_manifest(args.manifest)

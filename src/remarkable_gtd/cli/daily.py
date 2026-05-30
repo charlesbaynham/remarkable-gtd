@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """gtd-daily CLI — morning workflow: parse vault, generate PDF, upload to reMarkable."""
+
 from __future__ import annotations
 
 import argparse
@@ -91,8 +92,10 @@ def run_daily(
         "tickler": sum(len(v) for v in tasks.get("tickler", {}).values()),
     }
     print(f"\n✓ Daily GTD ready — {the_date.isoformat()}")
-    print(f"  Tasks: {counts['inbox']} inbox, {counts['next']} next, "
-          f"{counts['delegated']} delegated, {counts['tickler']} tickler")
+    print(
+        f"  Tasks: {counts['inbox']} inbox, {counts['next']} next, "
+        f"{counts['delegated']} delegated, {counts['tickler']} tickler"
+    )
     print(f"  PDF: {pdf_path}")
     return 0
 

@@ -1,4 +1,5 @@
 """QR code decoding with pluggable backends."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -31,6 +32,7 @@ class PyzbarBackend:
     def __init__(self):
         try:
             from pyzbar import pyzbar as _pyzbar
+
             self._pyzbar = _pyzbar
         except ImportError as exc:
             raise ImportError("pyzbar not installed") from exc
@@ -39,7 +41,11 @@ class PyzbarBackend:
         results = []
         codes = self._pyzbar.decode(img)
         for code in codes:
-            text = code.data.decode("utf-8") if isinstance(code.data, bytes) else str(code.data)
+            text = (
+                code.data.decode("utf-8")
+                if isinstance(code.data, bytes)
+                else str(code.data)
+            )
             # pyzbar gives rect; approximate as 4 corners
             x, y, w, h = code.rect
             pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
@@ -68,6 +74,7 @@ def get_backend(name: str = "auto") -> QRBackend:
 def decode_region(img: np.ndarray, roi: dict, canvas_size: tuple) -> str | None:
     """Decode QR in a specific ROI region."""
     from .ink import roi_to_pixels
+
     x1, y1, x2, y2 = roi_to_pixels(roi, canvas_size)
     # Add margin
     h, w = img.shape[:2]
@@ -84,7 +91,9 @@ def decode_region(img: np.ndarray, roi: dict, canvas_size: tuple) -> str | None:
     return results[0][0] if results else None
 
 
-def decode_header(rectified: np.ndarray, manifest_page: dict, canvas_size: tuple) -> str:
+def decode_header(
+    rectified: np.ndarray, manifest_page: dict, canvas_size: tuple
+) -> str:
     """Decode header QR and return page key."""
     roi = manifest_page["rois"].get("page:qr")
     if roi is None:
@@ -95,7 +104,9 @@ def decode_header(rectified: np.ndarray, manifest_page: dict, canvas_size: tuple
     return text
 
 
-def decode_task_qrs(rectified: np.ndarray, manifest_page: dict, canvas_size: tuple) -> dict[str, str]:
+def decode_task_qrs(
+    rectified: np.ndarray, manifest_page: dict, canvas_size: tuple
+) -> dict[str, str]:
     """Decode all task row QR codes. Returns {task_id: decoded_text}."""
     results = {}
     for key, roi in manifest_page.get("rois", {}).items():

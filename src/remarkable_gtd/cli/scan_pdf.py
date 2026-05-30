@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """gtd-scan-pdf CLI — scan a multi-page annotated PDF against a manifest."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,8 +17,12 @@ def main(argv=None) -> int:
     )
     p.add_argument("pdf", help="Path to annotated PDF.")
     p.add_argument("--manifest", required=True, help="Path to manifest JSON.")
-    p.add_argument("--ocr", default="null", choices=["null", "tesseract"], help="OCR engine.")
-    p.add_argument("-o", "--output", default="decisions.json", help="Output decisions JSON path.")
+    p.add_argument(
+        "--ocr", default="null", choices=["null", "tesseract"], help="OCR engine."
+    )
+    p.add_argument(
+        "-o", "--output", default="decisions.json", help="Output decisions JSON path."
+    )
     p.add_argument("--dpi", type=int, default=226, help="DPI for page rasterization.")
     p.add_argument("--scale", type=int, default=2, help="Scale factor for page images.")
     args = p.parse_args(argv)
@@ -33,7 +38,10 @@ def main(argv=None) -> int:
     try:
         import fitz
     except ImportError:
-        print("Error: PyMuPDF required for PDF scanning. pip install PyMuPDF", file=__import__("sys").stderr)
+        print(
+            "Error: PyMuPDF required for PDF scanning. pip install PyMuPDF",
+            file=__import__("sys").stderr,
+        )
         return 1
 
     pdf_path = Path(args.pdf)
@@ -63,19 +71,25 @@ def main(argv=None) -> int:
 
         try:
             decisions = run_scan(img_path, manifest, cfg, page_key)
-            page_results.append({
-                "page_key": page_key,
-                "page_no": i + 1,
-                **decisions,
-            })
-            print(f"  ✓ page {i + 1}: {page_key} — {len(decisions.get('tasks', []))} tasks")
+            page_results.append(
+                {
+                    "page_key": page_key,
+                    "page_no": i + 1,
+                    **decisions,
+                }
+            )
+            print(
+                f"  ✓ page {i + 1}: {page_key} — {len(decisions.get('tasks', []))} tasks"
+            )
         except Exception as e:
             print(f"  ✗ page {i + 1}: {page_key} — {e}", file=__import__("sys").stderr)
-            page_results.append({
-                "page_key": page_key,
-                "page_no": i + 1,
-                "error": str(e),
-            })
+            page_results.append(
+                {
+                    "page_key": page_key,
+                    "page_no": i + 1,
+                    "error": str(e),
+                }
+            )
 
     doc.close()
 

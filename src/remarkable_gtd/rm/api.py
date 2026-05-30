@@ -1,9 +1,9 @@
 """Thin wrapper around the rmapi binary for reMarkable cloud operations."""
+
 from __future__ import annotations
 
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -37,10 +37,12 @@ def list_files(folder: str = "/") -> list[dict]:
         # Format: [d] dirname  or  [f] filename
         m = re.match(r"^\[(\w+)\]\s+(.+)$", line)
         if m:
-            items.append({
-                "type": "dir" if m.group(1) == "d" else "file",
-                "name": m.group(2).strip(),
-            })
+            items.append(
+                {
+                    "type": "dir" if m.group(1) == "d" else "file",
+                    "name": m.group(2).strip(),
+                }
+            )
     return items
 
 
@@ -86,7 +88,9 @@ def download(remote_path: str, local_dir: Path) -> Path | None:
     # rmapi typically downloads as filename.rmdoc
     base_name = Path(remote_path).name
     for ext in [".rmdoc", ".pdf"]:
-        candidate = local_dir / (base_name + ext if not base_name.endswith(ext) else base_name)
+        candidate = local_dir / (
+            base_name + ext if not base_name.endswith(ext) else base_name
+        )
         if candidate.exists():
             return candidate
         # Also try without extension changes
@@ -101,7 +105,9 @@ def download(remote_path: str, local_dir: Path) -> Path | None:
     return None
 
 
-def find_latest_gtd(remote_folder: str = "GTD Daily", prefix: str = "gtd") -> str | None:
+def find_latest_gtd(
+    remote_folder: str = "GTD Daily", prefix: str = "gtd"
+) -> str | None:
     """Find the latest GTD file in a remote folder.
 
     Returns the remote path (e.g. "GTD Daily/20260530Z1200_gtd_sheet.pdf"),
@@ -109,7 +115,8 @@ def find_latest_gtd(remote_folder: str = "GTD Daily", prefix: str = "gtd") -> st
     """
     items = list_files(remote_folder)
     candidates = [
-        item["name"] for item in items
+        item["name"]
+        for item in items
         if item["type"] == "file" and prefix in item["name"].lower()
     ]
     if not candidates:

@@ -1,12 +1,12 @@
 """Manifest export — collects data-roi regions and writes the sidecar JSON."""
+
 from __future__ import annotations
 
 import json
 from datetime import date
 from pathlib import Path
 
-from remarkable_gtd.common.schema import MANIFEST_SCHEMA, PAGE_W_MM
-
+from remarkable_gtd.common.schema import MANIFEST_SCHEMA
 
 # ---------------------------------------------------------------------------
 # JavaScript: walk [data-roi] and return normalised rects relative to .page

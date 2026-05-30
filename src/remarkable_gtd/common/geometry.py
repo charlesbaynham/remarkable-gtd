@@ -1,4 +1,5 @@
 """Geometry helpers for normalized ROI rectangles."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

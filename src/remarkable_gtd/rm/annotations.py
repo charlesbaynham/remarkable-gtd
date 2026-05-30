@@ -2,6 +2,7 @@
 
 Ported from charlesbot-soul's render_v6_annotations.py.
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,7 +16,7 @@ except ImportError:
     fitz = None  # type: ignore[assignment]
 
 try:
-    from rmscene import read_blocks, SceneLineItemBlock
+    from rmscene import SceneLineItemBlock, read_blocks
     from rmscene.scene_items import PenColor
 except ImportError:
     read_blocks = None  # type: ignore[assignment]
@@ -25,7 +26,9 @@ except ImportError:
 
 def _check_deps() -> None:
     if fitz is None:
-        raise ImportError("PyMuPDF (fitz) is required. Install with: pip install PyMuPDF")
+        raise ImportError(
+            "PyMuPDF (fitz) is required. Install with: pip install PyMuPDF"
+        )
     if read_blocks is None:
         raise ImportError("rmscene is required. Install with: pip install rmscene")
 
