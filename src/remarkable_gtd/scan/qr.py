@@ -71,7 +71,7 @@ def decode_region(img: np.ndarray, roi: dict, canvas_size: tuple) -> str | None:
     x1, y1, x2, y2 = roi_to_pixels(roi, canvas_size)
     # Add margin
     h, w = img.shape[:2]
-    margin = 10
+    margin = 40
     x1 = max(0, x1 - margin)
     y1 = max(0, y1 - margin)
     x2 = min(w, x2 + margin)

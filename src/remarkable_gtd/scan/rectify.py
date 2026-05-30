@@ -19,18 +19,23 @@ def find_reg_marks(binary: np.ndarray) -> dict[str, tuple[float, float]]:
     Returns {"tl": (cx, cy), "tr": ..., "bl": ..., "br": ...} in pixel coords.
     Raises RegistrationError if fewer than 4 found."""
     h, w = binary.shape[:2]
-    quadrants = {
-        "tl": (0, h // 2, 0, w // 2),
-        "tr": (0, h // 2, w // 2, w),
-        "bl": (h // 2, h, 0, w // 2),
-        "br": (h // 2, h, w // 2, w),
+    # Search a 15%-of-dimensions window from each corner
+    cw = int(w * 0.15)
+    ch = int(h * 0.15)
+    regions = {
+        "tl": (0, ch, 0, cw),
+        "tr": (0, ch, w - cw, w),
+        "bl": (h - ch, h, 0, cw),
+        "br": (h - ch, h, w - cw, w),
     }
     marks = {}
-    for name, (y0, y1, x0, x1) in quadrants.items():
-        quad = binary[y0:y1, x0:x1]
-        if quad.size == 0:
+    for name, (y0, y1, x0, x1) in regions.items():
+        region = binary[y0:y1, x0:x1]
+        if region.size == 0:
             continue
-        contours, _ = cv2.findContours(quad, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Invert so black marks become white foreground
+        inv = 255 - region
+        contours, _ = cv2.findContours(inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         best_score = -1.0
         best_center = None
         for cnt in contours:
@@ -41,26 +46,46 @@ def find_reg_marks(binary: np.ndarray) -> dict[str, tuple[float, float]]:
             if not (0.6 <= aspect <= 1.4):
                 continue
             area = bw * bh
-            if area < 20:
+            if area < 100 or area > 8000:
                 continue
-            # Check plus-ness
+            # Hard proximity: bbox must intersect the 80 px corner region
+            CORNER_R = 80
+            if name == "tl" and (bx >= CORNER_R or by >= CORNER_R):
+                continue
+            if name == "tr" and (bx + bw <= region.shape[1] - CORNER_R or by >= CORNER_R):
+                continue
+            if name == "bl" and (bx >= CORNER_R or by + bh <= region.shape[0] - CORNER_R):
+                continue
+            if name == "br" and (bx + bw <= region.shape[1] - CORNER_R or by + bh <= region.shape[0] - CORNER_R):
+                continue
+            # Check plus-ness: high fill in center bands, low in corners
             cx = bx + bw // 2
             cy = by + bh // 2
-            h_band = quad[cy - max(1, bh // 6):cy + max(1, bh // 6), bx:bx + bw]
-            v_band = quad[by:by + bh, cx - max(1, bw // 6):cx + max(1, bw // 6)]
+            h_band = inv[cy - max(1, bh // 6):cy + max(1, bh // 6), bx:bx + bw]
+            v_band = inv[by:by + bh, cx - max(1, bw // 6):cx + max(1, bw // 6)]
             if h_band.size == 0 or v_band.size == 0:
                 continue
-            h_fill = np.mean(h_band < 128) if h_band.size else 0
-            v_fill = np.mean(v_band < 128) if v_band.size else 0
-            # Corner sub-regions should be mostly white
+            h_fill = np.mean(h_band > 128) if h_band.size else 0
+            v_fill = np.mean(v_band > 128) if v_band.size else 0
             corners = [
-                quad[by:by + bh // 3, bx:bx + bw // 3],
-                quad[by:by + bh // 3, bx + 2 * bw // 3:bx + bw],
-                quad[by + 2 * bh // 3:by + bh, bx:bx + bw // 3],
-                quad[by + 2 * bh // 3:by + bh, bx + 2 * bw // 3:bx + bw],
+                inv[by:by + bh // 3, bx:bx + bw // 3],
+                inv[by:by + bh // 3, bx + 2 * bw // 3:bx + bw],
+                inv[by + 2 * bh // 3:by + bh, bx:bx + bw // 3],
+                inv[by + 2 * bh // 3:by + bh, bx + 2 * bw // 3:bx + bw],
             ]
-            corner_fill = np.mean([np.mean(c < 128) for c in corners if c.size > 0]) if any(c.size > 0 for c in corners) else 1.0
-            score = (h_fill + v_fill) * 0.5 - corner_fill * 0.3
+            corner_fill = np.mean([np.mean(c > 128) for c in corners if c.size > 0]) if any(c.size > 0 for c in corners) else 1.0
+            # Proximity to corner: prefer marks near the corner of the search region
+            if name == "tl":
+                corner_dist = np.sqrt(bx**2 + by**2)
+            elif name == "tr":
+                corner_dist = np.sqrt((region.shape[1] - bx)**2 + by**2)
+            elif name == "bl":
+                corner_dist = np.sqrt(bx**2 + (region.shape[0] - by)**2)
+            else:  # br
+                corner_dist = np.sqrt((region.shape[1] - bx)**2 + (region.shape[0] - by)**2)
+            max_dist = np.sqrt(region.shape[1]**2 + region.shape[0]**2)
+            proximity = 1.0 - corner_dist / max_dist
+            score = (h_fill + v_fill) * 0.4 - corner_fill * 0.2 + proximity * 0.4
             if score > best_score:
                 best_score = score
                 M = cv2.moments(cnt)

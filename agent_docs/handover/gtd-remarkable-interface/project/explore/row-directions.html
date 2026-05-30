@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GTD Sheet — Layout Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous" onerror="window.__qrFail=true"></script>
+<style>
+  html, body { margin: 0; padding: 0; background: #d9d6cf; }
+  * { box-sizing: border-box; }
+  /* ---- shared "sheet" vocabulary ---- */
+  .sheet {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: #000;
+    background: #fff;
+    --ink: #000;
+    --hair: 1.5px solid #000;
+    --hair-thin: 1px solid #000;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  .qr { width: 46px; height: 46px; display: block; }
+  .qr svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+  /* sheet header */
+  .sh-head { display:flex; align-items:flex-end; justify-content:space-between; padding: 22px 26px 14px; border-bottom: 3px solid #000; }
+  .sh-title { font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line-height: 1; }
+  .sh-sub { font-size: 13px; font-weight: 500; color:#000; margin-top:6px; }
+  .sh-meta { text-align:right; font-size: 12px; line-height:1.5; }
+
+  /* legend / key */
+  .legend { display:flex; gap: 18px; flex-wrap:wrap; padding: 12px 26px; border-bottom: var(--hair); font-size: 12px; align-items:center; }
+  .legend .k { display:flex; align-items:center; gap:7px; }
+  .legend .kbox { width:22px; height:22px; border:2px solid #000; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+  .legend .klab { font-weight:600; }
+
+  /* checkbox cluster */
+  .gut { display:flex; gap: 9px; }
+  .cb { display:flex; flex-direction:column; align-items:center; gap:4px; width: 44px; }
+  .cb .box { width: 34px; height: 34px; border: 2.5px solid #000; border-radius: 3px; }
+  .cb .lab { font-size: 10px; font-weight:600; letter-spacing:0.02em; text-transform:uppercase; }
+  .cb .gly { font-size: 11px; font-weight:700; }
+
+  /* write blank */
+  .blank { border-bottom: 1.5px solid #000; min-width: 40px; display:inline-block; height: 1.1em; }
+
+  /* ---------- DIRECTION A — LEDGER ---------- */
+  .A .row { display:grid; grid-template-columns: 64px 58px 1fr 132px 212px; border-bottom: var(--hair); min-height: 104px; }
+  .A .cell { border-right: var(--hair-thin); padding: 9px 9px; display:flex; flex-direction:column; }
+  .A .cell:last-child { border-right: none; }
+  .A .colhead { display:grid; grid-template-columns: 64px 58px 1fr 132px 212px; border-bottom: var(--hair); background:#000; color:#fff; }
+  .A .colhead .ch { padding: 6px 9px; font-size: 11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; border-right:1px solid #fff; }
+  .A .colhead .ch:last-child { border-right:none; }
+  .A .c-id { align-items:center; justify-content:flex-start; gap:6px; }
+  .A .c-id .idtxt { font-size: 12px; font-weight:600; }
+  .A .pri { font-size: 30px; font-weight:700; line-height:1; }
+  .A .pri-rewrite { margin-top:auto; display:flex; align-items:center; gap:4px; font-size:11px; }
+  .A .pri-box { width:26px; height:26px; border:2px solid #000; }
+  .A .act { font-size: 17px; font-weight:500; line-height:1.32; }
+  .A .proj { font-size:12px; }
+  .A .proj .tag { font-family:'IBM Plex Mono',monospace; font-size:11px; border:1.5px solid #000; padding:2px 6px; align-self:flex-start; }
+  .A .c-gut { justify-content:center; align-items:center; }
+
+  /* ---------- DIRECTION B — CLEAN ROWS ---------- */
+  .B .row { display:grid; grid-template-columns: 70px 1fr 210px; gap: 16px; padding: 18px 26px 30px; border-bottom: var(--hair); align-items:start; }
+  .B .rail { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .B .rail .idtxt { font-size:11px; font-weight:600; }
+  .B .act { font-size: 19px; font-weight:500; line-height:1.34; }
+  .B .meta { margin-top:8px; font-size:12px; color:#000; display:flex; gap:14px; flex-wrap:wrap; }
+  .B .meta .m { display:flex; gap:5px; align-items:baseline; }
+  .B .meta .ml { text-transform:uppercase; font-size:10px; letter-spacing:0.05em; font-weight:600; }
+  .B .meta .mv { font-weight:600; }
+  .B .c-gut { justify-content:flex-end; }
+
+  /* ---------- DIRECTION C — FIELD FORM ---------- */
+  .C .row { padding: 16px 26px 18px; border-bottom: var(--hair); }
+  .C .top { display:flex; gap:12px; align-items:flex-start; }
+  .C .rail { display:flex; align-items:center; gap:8px; }
+  .C .rail .idtxt { font-size:11px; font-weight:600; }
+  .C .act { font-size:18px; font-weight:500; line-height:1.3; flex:1; }
+  .C .fields { display:flex; gap:22px; flex-wrap:wrap; margin: 12px 0 0 0; padding-left: 0; align-items:center; }
+  .C .fld { display:flex; align-items:center; gap:7px; font-size:12px; }
+  .C .fld .fl { text-transform:uppercase; font-size:10px; letter-spacing:0.05em; font-weight:600; }
+  .C .fld .cur { font-weight:600; border:1.5px solid #000; padding:1px 7px; }
+  .C .fld .arrow { font-weight:700; }
+  .C .fld .new { width: 64px; height: 24px; border:1.5px solid #000; }
+  .C .fld .new.wide { width: 120px; }
+  .C .botgut { margin-top:14px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="../design-canvas.jsx"></script>
+
+<script type="text/babel">
+const { useEffect } = React;
+
+// ---- sample data (real tasks from the current sheet) ----
+const NA = [
+  { id:'NA-01', pri:7, act:'Give Oliver final copy of EPSRC proposal', proj:'epsrc', due:'30 May' },
+  { id:'NA-02', pri:7, act:'Submit placeholder EOIs for both ERC starter and URF', proj:'erc-starter', due:'2 Jun' },
+  { id:'NA-05', pri:5, act:"Reproduce Oliver's plots and package up code for MLE paper — quick!", proj:'DAI continuum', due:'6 Jun' },
+];
+
+function Gutter({ items }) {
+  return (
+    <div className="gut">
+      {items.map((it,i)=>(
+        <div className="cb" key={i}>
+          <div className="box" />
+          <div className="gly">{it.g}</div>
+          <div className="lab">{it.l}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+const NA_GUT = [{g:'✓',l:'Done'},{g:'→',l:'Deleg'},{g:'↺',l:'Tickle'},{g:'✎',l:'Edit'}];
+
+function qrSvg(data) {
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(data);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 2, margin: 0 });
+  } catch(e) { return ''; }
+}
+function QR({ data }) {
+  return <span className="qr" dangerouslySetInnerHTML={{ __html: qrSvg(data) }}></span>;
+}
+
+function SheetHead({ title, sub, count }) {
+  return (
+    <div className="sh-head">
+      <div>
+        <div className="sh-title">{title}</div>
+        <div className="sh-sub">{sub}</div>
+      </div>
+      <div className="sh-meta mono">
+        <div>Fri 29 May 2026</div>
+        <div>{count} items</div>
+      </div>
+    </div>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="legend">
+      <span style={{fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:'0.05em'}}>Tick to&nbsp;:</span>
+      {NA_GUT.map((it,i)=>(
+        <span className="k" key={i}><span className="kbox">{it.g}</span><span className="klab">{it.l==='Deleg'?'Delegate':it.l==='Tickle'?'Defer to Tickler':it.l}</span></span>
+      ))}
+    </div>
+  );
+}
+
+/* ----- DIRECTION A: LEDGER ----- */
+function DirA() {
+  return (
+    <div className="sheet A">
+      <SheetHead title="Next Actions" sub="Bounded grid · every zone has a box" count={3} />
+      <Legend />
+      <div className="colhead">
+        <div className="ch">ID</div><div className="ch">Pri</div><div className="ch">Action</div><div className="ch">Project</div><div className="ch" style={{textAlign:'center'}}>Mark</div>
+      </div>
+      {NA.map((t,i)=>(
+        <div className="row" key={i}>
+          <div className="cell c-id"><QR data={t.id} /><span className="idtxt mono">{t.id}</span></div>
+          <div className="cell">
+            <div className="pri">{t.pri}</div>
+            <div className="pri-rewrite"><span>→</span><span className="pri-box" /></div>
+          </div>
+          <div className="cell"><div className="act">{t.act}</div></div>
+          <div className="cell"><span className="proj"><span className="tag">{t.proj}</span></span></div>
+          <div className="cell c-gut"><Gutter items={NA_GUT} /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ----- DIRECTION B: CLEAN ROWS ----- */
+function DirB() {
+  return (
+    <div className="sheet B">
+      <SheetHead title="Next Actions" sub="Airy · hairline between rows only" count={3} />
+      <Legend />
+      {NA.map((t,i)=>(
+        <div className="row" key={i}>
+          <div className="rail"><QR data={t.id} /><span className="idtxt mono">{t.id}</span></div>
+          <div>
+            <div className="act">{t.act}</div>
+            <div className="meta mono">
+              <span className="m"><span className="ml">P</span><span className="mv">{t.pri}</span></span>
+              <span className="m"><span className="ml">due</span><span className="mv">{t.due}</span></span>
+              <span className="m"><span className="ml">proj</span><span className="mv">{t.proj}</span></span>
+            </div>
+          </div>
+          <div className="c-gut"><Gutter items={NA_GUT} /></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ----- DIRECTION C: FIELD FORM ----- */
+function DirC() {
+  return (
+    <div className="sheet C">
+      <SheetHead title="Next Actions" sub="Pre-printed blanks · edit metadata in place" count={3} />
+      <Legend />
+      {NA.map((t,i)=>(
+        <div className="row" key={i}>
+          <div className="top">
+            <div className="rail"><QR data={t.id} /><span className="idtxt mono">{t.id}</span></div>
+            <div className="act">{t.act}</div>
+            <Gutter items={NA_GUT} />
+          </div>
+          <div className="fields">
+            <span className="fld"><span className="fl">Priority</span><span className="cur">{t.pri}</span><span className="arrow">→</span><span className="new" /></span>
+            <span className="fld"><span className="fl">Due</span><span className="cur">{t.due}</span><span className="arrow">→</span><span className="new wide" /></span>
+            <span className="fld"><span className="fl">Project</span><span className="cur mono">{t.proj}</span><span className="arrow">→</span><span className="new wide" /></span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function System() {
+  const li = {fontSize:14, lineHeight:1.5, marginBottom:9, paddingLeft:18, position:'relative'};
+  const dot = {position:'absolute', left:0, top:0, fontWeight:700};
+  const Item = ({h, children}) => (
+    <li style={li}><span style={dot}>—</span><b>{h}</b> {children}</li>
+  );
+  return (
+    <div style={{fontFamily:"'IBM Plex Sans',sans-serif", background:'#fff', padding:'30px 34px', color:'#111'}}>
+      <div style={{fontSize:13, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', color:'#666'}}>Design system</div>
+      <h2 style={{fontSize:26, margin:'4px 0 4px', fontWeight:700, letterSpacing:'-0.01em'}}>A sheet built for the pen <span style={{color:'#999'}}>and</span> the camera</h2>
+      <p style={{fontSize:14.5, lineHeight:1.55, maxWidth:620, color:'#333', marginTop:0}}>Two readers use this document: <b>you</b>, annotating with a stylus on the reMarkable, and the <b>nightly vision agent</b>, which photographs your marks and must understand them with near-zero errors. Every decision below serves both.</p>
+      <ul style={{listStyle:'none', padding:0, margin:'18px 0 0', maxWidth:640}}>
+        <Item h="Pure black on pure white.">No greys, no fills — e-ink dithers greys into noise that confuses OCR. Solid 100% ink only.</Item>
+        <Item h="Sized to the reMarkable 2 screen.">157.8 × 210.4 mm pages (the exact 1404×1872 panel ratio) so the sheet fills the display edge-to-edge with no scaling blur. Multi-page, never truncated.</Item>
+        <Item h="A fixed action gutter.">Four labelled boxes on every row — ✓ Done, → Delegate, ↺ Defer-to-Tickler, ✎ Edit. A tick in a known column = an unambiguous command. ✎ flags a row whose text/metadata you changed, telling the agent exactly where to re-read.</Item>
+        <Item h="Stable IDs + a QR fiducial per row.">Human-readable code (NA-05) for you; a small QR encoding the same ID so the agent can lock onto each task even with messy handwriting over it.</Item>
+        <Item h="Room to strike & rewrite.">Cross out a priority, change a word — there is dedicated, labelled space so corrections land where the agent expects them.</Item>
+        <Item h="IBM Plex Sans + Plex Mono.">Humanist sans for task text; mono for IDs and metadata, where character-precision matters most to the camera.</Item>
+      </ul>
+      <p style={{fontSize:13, color:'#777', marginTop:20, maxWidth:620}}>Below: three directions for the task row + annotation layout, shown with your real tasks. Pick one (or mix), then I build all four category pages and the Python generator.</p>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection id="sys" title="Design system" subtitle="The thinking before the pixels">
+        <DCArtboard id="system" label="Reasoning" width={760} height={560}><System /></DCArtboard>
+      </DCSection>
+      <DCSection id="dirs" title="Row + annotation directions" subtitle="Next Actions page, three treatments — same data">
+        <DCArtboard id="A" label="A · Ledger — bounded grid (most vision-robust)" width={820} height={520}><DirA /></DCArtboard>
+        <DCArtboard id="B" label="B · Clean rows — airy, minimal chrome" width={820} height={560}><DirB /></DCArtboard>
+        <DCArtboard id="C" label="C · Field form — edit metadata in labelled blanks" width={820} height={620}><DirC /></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

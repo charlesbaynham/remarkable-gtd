@@ -8,7 +8,7 @@ width) and exactly as TALL as its content needs — no truncation, no blank
 tails. Every task carries a stable ID + QR fiducial, and a fixed labelled
 gutter, so the nightly vision agent reads your handwritten marks reliably.
 
-    python -m remarkable_gtd.gen.generate tasks.example.json --out today.pdf
+    python generate.py tasks.example.json --out today.pdf
 
 WHY CHROMIUM (Playwright) AND NOT WEASYPRINT?
 A PDF page cannot auto-fit its height to content in WeasyPrint — its page
@@ -26,17 +26,10 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-import importlib.resources
-
+HERE = Path(__file__).resolve().parent
 PX_PER_MM = 96.0 / 25.4          # CSS px per mm at 96 dpi (Chromium print unit)
 PAGE_W_MM = 157.8                # reMarkable 2 panel width
 HEIGHT_PAD_MM = 0.6              # guard against rounding overflow to a 2nd page
-
-
-def _asset_text(name: str) -> str:
-    """Load asset text from the package using importlib.resources."""
-    files = importlib.resources.files("remarkable_gtd.gen.assets")
-    return files.joinpath(name).read_text(encoding="utf-8")
 
 
 # --------------------------------------------------------------------------
@@ -47,7 +40,7 @@ def qr_datauri(text: str) -> str:
 
     qr = qrcode.QRCode(
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=2,
+        box_size=10,
         border=0,
     )
     qr.add_data(text)
@@ -113,24 +106,23 @@ def build_buckets(data: dict) -> list[dict]:
 # Render
 # --------------------------------------------------------------------------
 def _env():
-    from jinja2 import Environment, BaseLoader, select_autoescape
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-    template_text = _asset_text("template.html.j2")
     env = Environment(
-        loader=BaseLoader(),
+        loader=FileSystemLoader(str(HERE)),
         autoescape=select_autoescape(["html", "xml", "j2"]),
         trim_blocks=True,
         lstrip_blocks=True,
     )
     env.globals["qr"] = qr_datauri
-    return env, template_text
+    return env
 
 
-def render_bucket_html(env, tmpl_text, bucket, total, the_date) -> str:
+def render_bucket_html(tmpl, bucket, total, the_date) -> str:
     """Full HTML doc containing a single bucket page, with gtd.css inlined
     so it loads under page.set_content (no file server needed)."""
-    css = _asset_text("gtd.css")
-    html = env.from_string(tmpl_text).render(
+    css = (HERE / "gtd.css").read_text(encoding="utf-8")
+    html = tmpl.render(
         buckets=[bucket],
         total_pages=total,
         date_long=the_date.strftime("%A %-d %B %Y"),
@@ -142,29 +134,20 @@ def render_bucket_html(env, tmpl_text, bucket, total, the_date) -> str:
     )
 
 
-def render_pdf(
-    data: dict,
-    the_date: date,
-    out_path: Path,
-    debug_html: Path | None = None,
-    manifest_path: Path | None = None,
-):
+def render_pdf(data: dict, the_date: date, out_path: Path, debug_html: Path | None = None):
     from playwright.sync_api import sync_playwright
     from pypdf import PdfReader, PdfWriter
 
-    from .manifest import collect_rois, write_manifest
-
     buckets = build_buckets(data)
     total = len(buckets)
-    env, tmpl_text = _env()
+    tmpl = _env().get_template("template.html.j2")
     writer = PdfWriter()
-    pages_info = []
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": 640, "height": 900})
         for b in buckets:
-            html = render_bucket_html(env, tmpl_text, b, total, the_date)
+            html = render_bucket_html(tmpl, b, total, the_date)
             if debug_html:
                 Path(f"{debug_html.stem}-{b['key']}{debug_html.suffix}").write_text(html, encoding="utf-8")
 
@@ -172,14 +155,10 @@ def render_pdf(
             page.emulate_media(media="print")
             page.evaluate("document.fonts && document.fonts.ready")  # await web fonts
 
-            page_rect = page.evaluate(
-                "() => { const r = document.querySelector('.page').getBoundingClientRect(); return {w: r.width, h: r.height}; }"
+            height_px = page.evaluate(
+                "Math.ceil(document.querySelector('.page').getBoundingClientRect().height)"
             )
-            height_px = int(page_rect["h"])
-            width_px = int(page_rect["w"])
             height_mm = height_px / PX_PER_MM + HEIGHT_PAD_MM
-
-            rois = collect_rois(page) if manifest_path else {}
 
             pdf_bytes = page.pdf(
                 width=f"{PAGE_W_MM}mm",
@@ -190,22 +169,10 @@ def render_pdf(
             )
             writer.add_page(PdfReader(io.BytesIO(pdf_bytes)).pages[0])
 
-            if manifest_path:
-                pages_info.append({
-                    "bucket": b["key"],
-                    "page_no": b["page_no"],
-                    "w_px": width_px,
-                    "h_px": height_px,
-                    "rois": rois,
-                })
-
         browser.close()
 
     with open(out_path, "wb") as fh:
         writer.write(fh)
-
-    if manifest_path and pages_info:
-        write_manifest(pages_info, the_date, PAGE_W_MM, manifest_path)
 
 
 # --------------------------------------------------------------------------
