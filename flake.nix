@@ -50,39 +50,5 @@
             uv --version
           '';
         };
-
-        packages.default = pkgs.python3Packages.buildPythonApplication {
-          pname = "remarkable-gtd";
-          version = "0.1.0";
-          format = "pyproject";
-
-          src = ./.;
-
-          nativeBuildInputs = with pkgs.python3Packages; [
-            setuptools
-            wheel
-          ];
-
-          propagatedBuildInputs = with pkgs.python3Packages; [
-            numpy
-            pillow
-            rmscene
-            playwright
-            pypdf
-            jinja2
-            qrcode
-            opencv-python
-            pyzbar
-            pytesseract
-            pymupdf
-            pytest
-            pdf2image
-          ];
-
-          meta = with pkgs.lib; {
-            description = "GTD paper workflow for reMarkable 2 — PDF generation + machine-vision scanner";
-            license = licenses.mit;
-          };
-        };
       });
 }
