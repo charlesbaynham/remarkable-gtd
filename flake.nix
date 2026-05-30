@@ -48,6 +48,9 @@
 
             # For playwright browser install
             playwright-driver.browsers
+
+            # For remarkable sync
+            rmapi
           ];
 
           shellHook = ''
