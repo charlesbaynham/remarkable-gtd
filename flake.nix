@@ -10,41 +10,19 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-
-        pythonPackages = pkgs.python3.withPackages (ps: with ps; [
-          # Base
-          numpy
-          pillow
-
-          # gen extras
-          playwright
-          pypdf
-          jinja2
-          qrcode
-
-          # scan extras
-          opencv-python
-          pyzbar
-          pytesseract
-          pymupdf
-
-          # dev extras
-          pytest
-          pdf2image
-        ]);
       in
       {
         devShells.default = pkgs.mkShell {
           name = "remarkable-gtd";
 
           buildInputs = with pkgs; [
-            pythonPackages
-            pip
+            # Python package manager
+            uv
 
             # System deps for scan pipeline
             zbar
             tesseract
-            poppler_utils
+            poppler-utils
 
             # For playwright browser install
             playwright-driver.browsers
@@ -57,7 +35,7 @@
             export PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers}
             export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
             echo "remarkable-gtd dev shell"
-            python --version
+            uv --version
           '';
         };
 
@@ -76,6 +54,7 @@
           propagatedBuildInputs = with pkgs.python3Packages; [
             numpy
             pillow
+            rmscene
             playwright
             pypdf
             jinja2
@@ -84,6 +63,8 @@
             pyzbar
             pytesseract
             pymupdf
+            pytest
+            pdf2image
           ];
 
           meta = with pkgs.lib; {
