@@ -13,24 +13,14 @@ dependencies = [
     "Jinja2>=3.1",
     "numpy",
     "Pillow",
-]
-
-[project.optional-dependencies]
-gen = [
     "playwright>=1.40",
     "pypdf>=4.0",
     "qrcode>=7.4",
-]
-scan = [
     "opencv-python>=4.8",
     "pyzbar>=0.1.9",
     "pytesseract>=0.3.10",
     "PyMuPDF>=1.23",
-]
-rm = [
     "rmscene>=0.4",
-]
-dev = [
     "pytest",
     "pdf2image",
 ]
