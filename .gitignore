@@ -1,4 +1,6 @@
 tasks.json
+.env
+secrets
 
 __pycache__/
 *.py[cod]
