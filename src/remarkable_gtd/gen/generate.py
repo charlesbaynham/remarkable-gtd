@@ -152,10 +152,13 @@ def render_pdf(
     from playwright.sync_api import sync_playwright
     from pypdf import PdfReader, PdfWriter
 
+    from .manifest import collect_rois, write_manifest
+
     buckets = build_buckets(data)
     total = len(buckets)
     env, tmpl_text = _env()
     writer = PdfWriter()
+    pages_info = []
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
@@ -169,10 +172,14 @@ def render_pdf(
             page.emulate_media(media="print")
             page.evaluate("document.fonts && document.fonts.ready")  # await web fonts
 
-            height_px = page.evaluate(
-                "Math.ceil(document.querySelector('.page').getBoundingClientRect().height)"
+            page_rect = page.evaluate(
+                "() => { const r = document.querySelector('.page').getBoundingClientRect(); return {w: r.width, h: r.height}; }"
             )
+            height_px = int(page_rect["h"])
+            width_px = int(page_rect["w"])
             height_mm = height_px / PX_PER_MM + HEIGHT_PAD_MM
+
+            rois = collect_rois(page) if manifest_path else {}
 
             pdf_bytes = page.pdf(
                 width=f"{PAGE_W_MM}mm",
@@ -183,10 +190,22 @@ def render_pdf(
             )
             writer.add_page(PdfReader(io.BytesIO(pdf_bytes)).pages[0])
 
+            if manifest_path:
+                pages_info.append({
+                    "bucket": b["key"],
+                    "page_no": b["page_no"],
+                    "w_px": width_px,
+                    "h_px": height_px,
+                    "rois": rois,
+                })
+
         browser.close()
 
     with open(out_path, "wb") as fh:
         writer.write(fh)
+
+    if manifest_path and pages_info:
+        write_manifest(pages_info, the_date, PAGE_W_MM, manifest_path)
 
 
 # --------------------------------------------------------------------------

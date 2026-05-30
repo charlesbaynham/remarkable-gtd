@@ -16,56 +16,56 @@
 <body>
 
 {#- ---------- reusable macros (mirror gtd-render.js) ---------- -#}
-{% macro cell(gl, label) -%}
-<div class="cell"><div class="box"></div><div class="gl">{{ gl }}</div><div class="cl">{{ label }}</div></div>
+{% macro cell(gl, label, task_id, roi_key) -%}
+<div class="cell"><div class="box" data-roi="{{ task_id }}:{{ roi_key }}"></div><div class="gl">{{ gl }}</div><div class="cl">{{ label }}</div></div>
 {%- endmacro %}
 
-{% macro defer(heading) -%}
+{% macro defer(heading, task_id, stem='defer') -%}
 <div class="defer">
   <div class="dh">{{ heading }}</div>
   <div class="trio">
-    <div class="dcell"><div class="box"></div><div class="cl">1w</div></div>
-    <div class="dcell"><div class="box"></div><div class="cl">1m</div></div>
-    <div class="dcell"><div class="box"></div><div class="cl">1q</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ task_id }}:{{ stem }}_1w"></div><div class="cl">1w</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ task_id }}:{{ stem }}_1m"></div><div class="cl">1m</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ task_id }}:{{ stem }}_1q"></div><div class="cl">1q</div></div>
   </div>
 </div>
 {%- endmacro %}
 
-{% macro gutter(cat) -%}
+{% macro gutter(cat, task_id) -%}
 <div class="gut">
 {%- if cat == 'inbox' -%}
-  {{ cell('→','Next') }}{{ cell('→','Deleg') }}{{ defer('Defer') }}{{ cell('✗','Drop') }}
+  {{ cell('→','Next', task_id, 'to_next') }}{{ cell('→','Deleg', task_id, 'to_deleg') }}{{ defer('Defer', task_id, 'defer') }}{{ cell('✗','Drop', task_id, 'drop') }}
 {%- elif cat == 'delegated' -%}
-  {{ cell('✓','Done') }}{{ cell('↩','To me') }}{{ defer('Defer') }}{{ cell('✎','Edit') }}
+  {{ cell('✓','Done', task_id, 'done') }}{{ cell('↩','To me', task_id, 'to_me') }}{{ defer('Defer', task_id, 'defer') }}{{ cell('✎','Edit', task_id, 'edit') }}
 {%- elif cat == 'tickler' -%}
-  {{ cell('→','Now') }}{{ cell('✓','Done') }}{{ defer('Re-defer') }}{{ cell('✎','Edit') }}
+  {{ cell('→','Now', task_id, 'activate') }}{{ cell('✓','Done', task_id, 'done') }}{{ defer('Re-defer', task_id, 'redefer') }}{{ cell('✎','Edit', task_id, 'edit') }}
 {%- else -%}
-  {{ cell('✓','Done') }}{{ cell('→','Deleg') }}{{ defer('Defer') }}{{ cell('✎','Edit') }}
+  {{ cell('✓','Done', task_id, 'done') }}{{ cell('→','Deleg', task_id, 'to_deleg') }}{{ defer('Defer', task_id, 'defer') }}{{ cell('✎','Edit', task_id, 'edit') }}
 {%- endif -%}
 </div>
 {%- endmacro %}
 
-{% macro fld_cur(label, cur, slot, tag=False) -%}
-<span class="fld"><span class="fl">{{ label }}</span><span class="cur{{ ' tag' if tag }}">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot }}"></span></span>
+{% macro fld_cur(label, cur, slot, task_id, tag=False) -%}
+<span class="fld"><span class="fl">{{ label }}</span><span class="cur{{ ' tag' if tag }}">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot }}" data-roi="{{ task_id }}:slot_{{ slot }}"></span></span>
 {%- endmacro %}
 
-{% macro fld_blank(label, slot) -%}
-<span class="fld"><span class="fl">{{ label }}</span><span class="slot {{ slot }}"></span></span>
+{% macro fld_blank(label, slot, task_id) -%}
+<span class="fld"><span class="fl">{{ label }}</span><span class="slot {{ slot }}" data-roi="{{ task_id }}:slot_{{ slot }}"></span></span>
 {%- endmacro %}
 
-{% macro fld_prom(label, cur, slot) -%}
-<span class="fld prominent"><span class="fl">{{ label }}</span><span class="cur">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot }}"></span></span>
+{% macro fld_prom(label, cur, slot, task_id) -%}
+<span class="fld prominent"><span class="fl">{{ label }}</span><span class="cur">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot }}" data-roi="{{ task_id }}:slot_{{ slot }}"></span></span>
 {%- endmacro %}
 
 {% macro fields(cat, t) -%}
 {%- if cat == 'inbox' -%}
-<div class="fields">{{ fld_blank('Priority','n') }}{{ fld_blank('Due','s') }}{{ fld_blank('Project','m') }}{{ fld_blank('To','to') }}</div>
+<div class="fields">{{ fld_blank('Priority','n', t.id) }}{{ fld_blank('Due','s', t.id) }}{{ fld_blank('Project','m', t.id) }}{{ fld_blank('To','to', t.id) }}</div>
 {%- elif cat == 'delegated' -%}
-<div class="fields">{{ fld_prom('To', t.to, 'to') }}{{ fld_cur('Priority', t.pri, 'n') }}{{ fld_cur('Due', t.due, 's') }}{{ fld_cur('Project', t.proj, 'm', true) }}</div>
+<div class="fields">{{ fld_prom('To', t.to, 'to', t.id) }}{{ fld_cur('Priority', t.pri, 'n', t.id) }}{{ fld_cur('Due', t.due, 's', t.id) }}{{ fld_cur('Project', t.proj, 'm', t.id, true) }}</div>
 {%- elif cat == 'tickler' -%}
 {#- no metadata -#}
 {%- else -%}
-<div class="fields">{{ fld_cur('Priority', t.pri, 'n') }}{{ fld_cur('Due', t.due, 's') }}{{ fld_cur('Project', t.proj, 'm', true) }}{{ fld_blank('To','to') }}</div>
+<div class="fields">{{ fld_cur('Priority', t.pri, 'n', t.id) }}{{ fld_cur('Due', t.due, 's', t.id) }}{{ fld_cur('Project', t.proj, 'm', t.id, true) }}{{ fld_blank('To','to', t.id) }}</div>
 {%- endif -%}
 {%- endmacro %}
 
@@ -73,11 +73,11 @@
 <div class="row">
   <div class="row-top">
     <div class="rail">
-      <span class="qr"><img src="{{ qr(t.id) }}" alt="{{ t.id }}" /></span>
+      <span class="qr" data-roi="{{ t.id }}:qr"><img src="{{ qr(t.id) }}" alt="{{ t.id }}" /></span>
       <span class="code mono">{{ t.id }}</span>
     </div>
-    <div class="act-wrap"><div class="act">{{ t.act }}</div></div>
-    {{ gutter(cat) }}
+    <div class="act-wrap"><div class="act" data-roi="{{ t.id }}:act">{{ t.act }}</div></div>
+    {{ gutter(cat, t.id) }}
   </div>
   {{ fields(cat, t) }}
 </div>
@@ -112,7 +112,7 @@
 {#- ---------- one bucket = one tall page ---------- -#}
 {% for b in buckets %}
 <section class="page" data-bucket="{{ b.key }}">
-  <div class="reg tl"></div><div class="reg tr"></div><div class="reg bl"></div><div class="reg br"></div>
+  <div class="reg tl" data-roi="reg:tl"></div><div class="reg tr" data-roi="reg:tr"></div><div class="reg bl" data-roi="reg:bl"></div><div class="reg br" data-roi="reg:br"></div>
 
   <div class="head">
     <div class="head-l">
@@ -125,7 +125,7 @@
     <div class="head-r">
       <div class="big">{{ date_long }}</div>
       <div class="mono">{{ b.count_label }}</div>
-      <div style="display:flex;justify-content:flex-end"><span class="head-qr"><img src="{{ qr('GTD|' ~ b.key ~ '|' ~ date_stamp) }}" alt="page code" /></span></div>
+      <div style="display:flex;justify-content:flex-end"><span class="head-qr" data-roi="page:qr"><img src="{{ qr('GTD|' ~ b.key ~ '|' ~ date_stamp) }}" alt="page code" /></span></div>
     </div>
   </div>
 
@@ -147,7 +147,7 @@
     <div class="capture">
       <div class="ct">+ Capture — write new items here</div>
       {% for i in range(1, b.capture + 1) %}
-      <div class="cap-line"><span class="cn">N{{ i }}</span><span class="cbx"></span></div>
+      <div class="cap-line" data-roi="capture:N{{ i }}:line"><span class="cn">N{{ i }}</span><span class="cbx" data-roi="capture:N{{ i }}:box"></span></div>
       {% endfor %}
     </div>
     {% endif %}
