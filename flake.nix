@@ -10,6 +10,16 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        rmapi = pkgs.rmapi.overrideAttrs (old: {
+          version = "0.0.33-unstable-2026-05-30";
+          src = pkgs.fetchFromGitHub {
+            owner = "ddvk";
+            repo = "rmapi";
+            rev = "0a69a608b22f5c11dff07254a7e30b45f2c041f7";
+            sha256 = "sha256-g7KFLa+VBkubzdrgMFDVvAuscw41nyfHd7DWvh3S+NU=";
+          };
+        });
       in
       {
         devShells.default = pkgs.mkShell {
