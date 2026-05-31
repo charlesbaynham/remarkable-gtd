@@ -114,12 +114,8 @@ def render_annotations(
     rm_width = 1404
     rm_height = 1872
 
-    pdf_rect = page.rect
-    pdf_width = pdf_rect.width
-    pdf_height = pdf_rect.height
-
-    scale_x = pdf_width / rm_width
-    scale_y = pdf_height / rm_height
+    # reMarkable 2: 1404x1872 px at 226 DPI. PDF points = px * 72/DPI.
+    SCALE = 72.0 / 226  # ≈ 0.3186
 
     for line in lines:
         color = _color_for_pen(line.color)
@@ -129,13 +125,15 @@ def render_annotations(
 
         fitz_points = []
         for p in points:
-            x = p.x * scale_x
-            y = p.y * scale_y
+            # x is centered around 0 (range approx [-702, +702]), shift positive
+            x = (p.x + rm_width / 2) * SCALE
+            # y is 0-based (range [0, 1872])
+            y = p.y * SCALE
             fitz_points.append((x, y))
 
         shape = page.new_shape()
         shape.draw_polyline(fitz_points)
-        avg_width = sum(p.width for p in points) / len(points) * scale_x * 0.3
+        avg_width = sum(p.width for p in points) / len(points) * SCALE * 0.3
         shape.finish(color=color, width=max(avg_width, 0.5))
         shape.commit()
 
