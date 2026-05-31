@@ -1,10 +1,8 @@
-"""Render reMarkable v6 annotations onto a PDF using rmscene + PyMuPDF.
-
-Ported from charlesbot-soul's render_v6_annotations.py.
-"""
+"""Render reMarkable v6 annotations onto a PDF using rmscene + PyMuPDF."""
 
 from __future__ import annotations
 
+import json
 import sys
 import zipfile
 from io import BytesIO
@@ -33,19 +31,47 @@ def _check_deps() -> None:
         raise ImportError("rmscene is required. Install with: pip install rmscene")
 
 
-def extract_from_rmdoc(rmdoc_path: Path) -> tuple[bytes | None, bytes | None]:
-    """Extract PDF and .rm files from an rmdoc zip."""
+def extract_from_rmdoc(
+    rmdoc_path: Path,
+) -> tuple[bytes | None, dict[int, bytes]]:
+    """Extract PDF and all .rm files from an rmdoc zip.
+
+    Returns:
+        (pdf_bytes, {page_index: rm_bytes})
+    """
     with zipfile.ZipFile(rmdoc_path, "r") as z:
         pdf_name = None
-        rm_name = None
+        rm_files = {}
+        content_name = None
         for name in z.namelist():
             if name.endswith(".pdf"):
                 pdf_name = name
+            elif name.endswith(".content"):
+                content_name = name
             elif name.endswith(".rm"):
-                rm_name = name
+                rm_files[name] = z.read(name)
+
         pdf_bytes = z.read(pdf_name) if pdf_name else None
-        rm_bytes = z.read(rm_name) if rm_name else None
-        return pdf_bytes, rm_bytes
+
+        if not content_name or not rm_files:
+            # Fallback: return first rm file as page 0
+            first_rm = next(iter(rm_files.values())) if rm_files else None
+            return pdf_bytes, {0: first_rm} if first_rm else {}
+
+        content = json.loads(z.read(content_name))
+        pages = content.get("pages", [])
+        # Build UUID -> page_index mapping
+        uuid_to_index = {uuid: i for i, uuid in enumerate(pages)}
+
+        # Map rm files to page indices
+        rm_by_page = {}
+        for rm_name, rm_bytes in rm_files.items():
+            # rm_name format: {doc_uuid}/{page_uuid}.rm
+            page_uuid = Path(rm_name).stem
+            page_index = uuid_to_index.get(page_uuid, 0)
+            rm_by_page[page_index] = rm_bytes
+
+        return pdf_bytes, rm_by_page
 
 
 def parse_annotations(rm_bytes: bytes) -> list:
@@ -75,11 +101,14 @@ def _color_for_pen(color_enum) -> tuple[float, float, float]:
     return mapping.get(color_enum, (0, 0, 0))
 
 
-def render_annotations(pdf_bytes: bytes, lines: list, output_path: Path) -> None:
-    """Render annotation lines onto the PDF."""
+def render_annotations(
+    doc: fitz.Document,
+    page_index: int,
+    lines: list,
+) -> None:
+    """Render annotation lines onto a specific PDF page."""
     _check_deps()
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    page = doc[0]
+    page = doc[page_index]
 
     # reMarkable 2 dimensions in pixels
     rm_width = 1404
@@ -100,8 +129,8 @@ def render_annotations(pdf_bytes: bytes, lines: list, output_path: Path) -> None
 
         fitz_points = []
         for p in points:
-            x = (p.x + rm_width / 2) * scale_x
-            y = (p.y + rm_height / 2) * scale_y
+            x = p.x * scale_x
+            y = p.y * scale_y
             fitz_points.append((x, y))
 
         shape = page.new_shape()
@@ -109,9 +138,6 @@ def render_annotations(pdf_bytes: bytes, lines: list, output_path: Path) -> None
         avg_width = sum(p.width for p in points) / len(points) * scale_x * 0.3
         shape.finish(color=color, width=max(avg_width, 0.5))
         shape.commit()
-
-    doc.save(str(output_path))
-    doc.close()
 
 
 def pdf_to_images(
@@ -152,14 +178,27 @@ def render_rmdoc(rmdoc_path: Path, output_pdf: Path) -> None:
 
     If no annotations are present, the clean PDF is copied.
     """
-    pdf_bytes, rm_bytes = extract_from_rmdoc(rmdoc_path)
+    pdf_bytes, rm_by_page = extract_from_rmdoc(rmdoc_path)
     if not pdf_bytes:
         raise ValueError(f"No PDF found in rmdoc: {rmdoc_path}")
 
-    if not rm_bytes:
+    if not rm_by_page:
         # No annotations — just copy the PDF
         output_pdf.write_bytes(pdf_bytes)
         return
 
-    lines = parse_annotations(rm_bytes)
-    render_annotations(pdf_bytes, lines, output_pdf)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+    for page_index, rm_bytes in sorted(rm_by_page.items()):
+        if page_index >= len(doc):
+            print(
+                f"Warning: page index {page_index} out of range ({len(doc)} pages)",
+                file=sys.stderr,
+            )
+            continue
+        lines = parse_annotations(rm_bytes)
+        if lines:
+            render_annotations(doc, page_index, lines)
+
+    doc.save(str(output_pdf))
+    doc.close()

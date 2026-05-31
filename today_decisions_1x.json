@@ -1,0 +1,762 @@
+{
+  "schema": "gtd.decisions/1",
+  "source_pdf": "today_fixed.pdf",
+  "manifest": "today.manifest.json",
+  "pages": [
+    {
+      "page_key": "GTD|inbox|2026-05-31",
+      "page_no": 1,
+      "schema": "gtd.decisions/1",
+      "source_image": "/tmp/gtd_scan_pdf/page_1.png",
+      "manifest": "",
+      "bucket": "inbox",
+      "date": "2026-05-31",
+      "header_qr": "GTD|inbox|2026-05-31",
+      "rectify": {
+        "residual_px": 0.0,
+        "reg_marks_found": {
+          "tl": [
+            47.46,
+            47.46
+          ],
+          "tr": [
+            1354.54,
+            47.46
+          ],
+          "bl": [
+            47.46,
+            2204.54
+          ],
+          "br": [
+            1354.54,
+            2204.54
+          ]
+        }
+      },
+      "tasks": [
+        {
+          "id": "IN-01",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "to_next": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.037
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.037
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.037
+            },
+            "drop": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "IN-02",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "to_next": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "drop": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "IN-03",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "to_next": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "drop": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        }
+      ],
+      "captures": [
+        {
+          "line": "capture:N1:line",
+          "text": "",
+          "inked": false,
+          "ocr_conf": null
+        },
+        {
+          "line": "capture:N2:line",
+          "text": "",
+          "inked": false,
+          "ocr_conf": null
+        },
+        {
+          "line": "capture:N3:line",
+          "text": "",
+          "inked": false,
+          "ocr_conf": null
+        },
+        {
+          "line": "capture:N4:line",
+          "text": "23 [E s\u00e9qmccA& z\u00e9\ufb01\u00e9lm",
+          "inked": true,
+          "ocr_conf": null
+        },
+        {
+          "line": "capture:N5:line",
+          "text": "",
+          "inked": false,
+          "ocr_conf": null
+        },
+        {
+          "line": "capture:N6:line",
+          "text": "",
+          "inked": false,
+          "ocr_conf": null
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "page_key": "GTD|next|2026-05-31",
+      "page_no": 2,
+      "schema": "gtd.decisions/1",
+      "source_image": "/tmp/gtd_scan_pdf/page_2.png",
+      "manifest": "",
+      "bucket": "next",
+      "date": "2026-05-31",
+      "header_qr": "GTD|next|2026-05-31",
+      "rectify": {
+        "residual_px": 0.0,
+        "reg_marks_found": {
+          "tl": [
+            47.46,
+            47.46
+          ],
+          "tr": [
+            1354.54,
+            47.46
+          ],
+          "bl": [
+            47.46,
+            2498.54
+          ],
+          "br": [
+            1354.54,
+            2498.54
+          ]
+        }
+      },
+      "tasks": [
+        {
+          "id": "NA-01",
+          "qr_verified": true,
+          "action": "defer_1w",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": true,
+              "fill": 0.0741
+            },
+            "defer_1m": {
+              "inked": true,
+              "fill": 0.0741
+            },
+            "defer_1q": {
+              "inked": true,
+              "fill": 0.0741
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "NA-02",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "NA-03",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "NA-04",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "NA-05",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "NA-06",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_deleg": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        }
+      ],
+      "captures": [],
+      "warnings": []
+    },
+    {
+      "page_key": "GTD|delegated|2026-05-31",
+      "page_no": 3,
+      "schema": "gtd.decisions/1",
+      "source_image": "/tmp/gtd_scan_pdf/page_3.png",
+      "manifest": "",
+      "bucket": "delegated",
+      "date": "2026-05-31",
+      "header_qr": "GTD|delegated|2026-05-31",
+      "rectify": {
+        "residual_px": 0.0,
+        "reg_marks_found": {
+          "tl": [
+            47.46,
+            47.46
+          ],
+          "tr": [
+            1354.54,
+            47.46
+          ],
+          "bl": [
+            47.48,
+            1822.58
+          ],
+          "br": [
+            1354.52,
+            1822.58
+          ]
+        }
+      },
+      "tasks": [
+        {
+          "id": "DG-01",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_me": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "DG-02",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_me": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "DG-03",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "to_me": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "defer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        }
+      ],
+      "captures": [],
+      "warnings": []
+    },
+    {
+      "page_key": "GTD|tickler|2026-05-31",
+      "page_no": 4,
+      "schema": "gtd.decisions/1",
+      "source_image": "/tmp/gtd_scan_pdf/page_4.png",
+      "manifest": "",
+      "bucket": "tickler",
+      "date": "2026-05-31",
+      "header_qr": "GTD|tickler|2026-05-31",
+      "rectify": {
+        "residual_px": 0.0,
+        "reg_marks_found": {
+          "tl": [
+            47.46,
+            47.46
+          ],
+          "tr": [
+            1354.54,
+            47.46
+          ],
+          "bl": [
+            45.93,
+            1821.38
+          ],
+          "br": [
+            1356.07,
+            1821.38
+          ]
+        }
+      },
+      "tasks": [
+        {
+          "id": "TK-01",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "activate": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1w": {
+              "inked": false,
+              "fill": 0.037
+            },
+            "redefer_1m": {
+              "inked": false,
+              "fill": 0.037
+            },
+            "redefer_1q": {
+              "inked": false,
+              "fill": 0.037
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "TK-02",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "activate": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "TK-03",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "activate": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "TK-04",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "activate": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        },
+        {
+          "id": "TK-05",
+          "qr_verified": true,
+          "action": "none",
+          "edited": false,
+          "fields": {},
+          "ticks": {
+            "activate": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "done": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1w": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1m": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "redefer_1q": {
+              "inked": false,
+              "fill": 0.0
+            },
+            "edit": {
+              "inked": false,
+              "fill": 0.0
+            }
+          },
+          "warnings": []
+        }
+      ],
+      "captures": [],
+      "warnings": []
+    }
+  ]
+}

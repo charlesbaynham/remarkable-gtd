@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -d .venv ]; then echo \"UV venv ready: $(.venv/bin/python --version)\"; else echo \"No .venv found. Run: uv sync\"; fi",
+            "statusMessage": "Checking UV environment..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; case \"$f\" in */pyproject.toml|*/uv.lock) echo \"🔄 Syncing UV dependencies...\" && uv sync ;; esac; } 2>/dev/null || true",
+            "statusMessage": "Syncing UV dependencies..."
+          }
+        ]
+      }
+    ]
+  }
+}
