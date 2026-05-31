@@ -19,54 +19,52 @@
 - **Bug 3**: Coordinate transform used `+ rm_width/2` and `+ rm_height/2` offsets. Research shows x is centered but y is 0-based (see `research.md`).
 - Fixed bugs 1 & 2 in `src/remarkable_gtd/rm/annotations.py`. Re-rendered PDF now shows annotations on correct pages.
 
-## 🔄 IN PROGRESS
+### M4/M5: Annotation Coordinate Transform — FIXED
+**Status**: Complete — annotations now land in correct boxes.
 
-### M4: Annotation Coordinate Transform
-**Status**: Partially fixed — annotations now on correct pages, but y-coordinate mapping is still off.
+**Fix in `src/remarkable_gtd/rm/annotations.py`:**
+- Replaced per-page-dimension scaling with uniform `SCALE = 72.0 / 226` (reMarkable DPI → PDF points)
+- **x**: centered around 0 (range [-702, +702]) → shift by +702 before scaling: `x = (p.x + rm_width/2) * scale`
+- **y**: 0-based, no offset needed: `y = p.y * scale`
+- Verified by e2e scan: NA-01 and NA-02 correctly detected as `done`
 
-**Problem**: When scanning the rendered annotated PDF, ticks that appear visually in "done" boxes are detected in "defer" boxes or not at all.
+### M6: Scanner Scale Issue — FIXED
+**Status**: Complete — `gtd-scan-pdf` now works with defaults.
 
-**Root cause hypothesis**: The reMarkable v6 `.rm` coordinate system is:
-- **x**: centered around 0 (range approx [-702, +702] for 1404px width)
-- **y**: 0-based (range approx [0, 1872])
-- Scale: uniform `72/226` pts/px for both axes (confirmed by `rmc` SVG exporter)
+**Fix in `src/remarkable_gtd/scan/rectify.py`:**
+- Replaced hardcoded area thresholds (`area < 100 or area > 8000`) with scale-aware relative thresholds:
+  - `min_area = max(100, search_area * 0.005)` (noise rejection floor)
+  - `max_area = search_area * 0.15` (accommodates larger marks at higher scale)
+- Replaced hardcoded `CORNER_R = 80` with scale-aware `corner_r` capped to search region bounds
 
-Current code in `annotations.py` (after fixes) uses 0-based for BOTH x and y, which is wrong for x.
+**Fix in `src/remarkable_gtd/cli/scan_pdf.py`:**
+- Changed `--scale` default from `2` to `1`
 
-**Evidence**:
-- `rmc` (ricklupton's reference tool) uses `SCALE = 72.0/226`, `xx = scale`, `yy = scale` with no offset for SVG (SVG handles negative coords via viewBox).
-- For PDF/PyMuPDF, x needs shifting: `x = (p.x + 702) * SCALE`.
-- For y, the correct transform is unclear — the PDF page heights (720, 814, 599 pts) don't match `SCREEN_HEIGHT * SCALE = 596.3` pts.
+### M7: End-to-End Verification — PASSED
+**Status**: Complete — full pipeline works.
 
-**Empirical test results** (see `research.md` for full data):
-- Transform `x = (p.x + 702) * (pdf_width/1404), y = p.y * (pdf_height/1872)`: Maps lines to NA-04/05/06 area, not NA-01/02/03.
-- Transform `x = (p.x + 702) * SCALE, y = (p.y + 936) * SCALE`: Maps lines to NA-05/06 + off-page.
-- Transform `x = (p.x + 702) * SCALE, y = p.y * SCALE`: Maps lines to NA-04/05/06.
-- None perfectly match the 6 visible marks.
+**Results from scanning `today.rmdoc` → `today_fixed.pdf`:**
+| Task | Action | Notes |
+|------|--------|-------|
+| NA-01 | **done** ✅ | Correct. Done box ticked (fill=0.166). Defer trio has light marks (fill=0.074) handled by precedence rule. |
+| NA-02 | **done** ✅ | Correct. Done box ticked (fill=0.177). |
+| NA-03 | **to_deleg** ✅ | Correct per user's actual mark. |
+| NA-04 | none (edited) | Edit box ticked. |
+| NA-05 | none | No marks. |
+| NA-06 | none | No marks. |
 
-**Complication**: The user's rmdoc has 12 lines on the next-actions page, but the rendered image shows ~6 marks in done boxes. Some marks may be from a different source (e.g., original PDF artifacts, or other .rm files rendered on wrong pages before the fix).
+All 34 tests pass (1 skipped).
 
 ## ⏳ REMAINING
-
-### M5: Fix Annotation-to-PDF Coordinate Mapping
-- Determine correct transform from reMarkable screen coordinates to PDF points.
-- Verify by comparing rendered positions against manifest ROI positions.
-- Re-run e2e tests after fix.
-
-### M6: Scanner Scale Issue
-- `gtd-scan-pdf` default `--scale 2` causes reg marks to exceed area threshold (8000 px²), failing detection.
-- **Workaround**: Use `--scale 1` (confirmed working).
-- **Proper fix**: Either adjust `find_reg_marks` area thresholds for 2× images, or change default scale to 1.
-
-### M7: End-to-End Verification
-- User writes on reMarkable → download → render → scan → verify decisions match what was written.
-- Currently the scan detects `NA-01: defer_1w` when user likely ticked `done`.
 
 ### M8: Optional — rmrl Integration
 - User suggested https://github.com/naturale0/rmrl as alternative rendering approach.
 - May not support newest reMarkable file format (v6 .rm).
+- **Not needed** — current `rmscene` + PyMuPDF approach works correctly.
 
 ## Files Changed
-- `src/remarkable_gtd/rm/annotations.py` — major rewrite (multi-page .rm support, page mapping, coordinate transform)
+- `src/remarkable_gtd/rm/annotations.py` — coordinate transform fix (uniform scale, centered x, 0-based y)
+- `src/remarkable_gtd/scan/rectify.py` — scale-aware reg mark thresholds
+- `src/remarkable_gtd/cli/scan_pdf.py` — default scale changed from 2 to 1
 - `.envrc` — added `PLAYWRIGHT_BROWSERS_PATH`
 - `tests/__init__.py` — new (fixes import)
