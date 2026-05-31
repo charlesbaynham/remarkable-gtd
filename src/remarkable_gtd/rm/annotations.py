@@ -126,10 +126,11 @@ def render_annotations(
 
         fitz_points = []
         for p in points:
-            # x is centered around 0 (range approx [-702, +702]), shift positive
-            # because PyMuPDF clips negative coordinates.
+            # x is centered around 0 (range approx [-702, +702]); shift to PDF
+            # coordinates (0-origin) before scaling.
             x = (p.x + rm_width / 2) * scale
-            # y is 0-based (range [0, 1872]) — rmscene raw values, no offset needed.
+            # y needs no offset before scaling — confirmed by rmc exporter (yy=scale)
+            # and empirical test mapping lines to correct task rows.
             y = p.y * scale
             fitz_points.append((x, y))
 
