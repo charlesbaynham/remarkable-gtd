@@ -115,7 +115,8 @@ def render_annotations(
     rm_height = 1872
 
     # reMarkable 2: 1404x1872 px at 226 DPI. PDF points = px * 72/DPI.
-    SCALE = 72.0 / 226  # ≈ 0.3186
+    # Uniform scale — rmc reference exporter uses xx=yy=scale with no per-axis offset.
+    scale = 72.0 / 226  # ≈ 0.3186
 
     for line in lines:
         color = _color_for_pen(line.color)
@@ -126,14 +127,15 @@ def render_annotations(
         fitz_points = []
         for p in points:
             # x is centered around 0 (range approx [-702, +702]), shift positive
-            x = (p.x + rm_width / 2) * SCALE
-            # y is 0-based (range [0, 1872])
-            y = p.y * SCALE
+            # because PyMuPDF clips negative coordinates.
+            x = (p.x + rm_width / 2) * scale
+            # y is 0-based (range [0, 1872]) — rmscene raw values, no offset needed.
+            y = p.y * scale
             fitz_points.append((x, y))
 
         shape = page.new_shape()
         shape.draw_polyline(fitz_points)
-        avg_width = sum(p.width for p in points) / len(points) * SCALE * 0.3
+        avg_width = sum(p.width for p in points) / len(points) * scale * 0.3
         shape.finish(color=color, width=max(avg_width, 0.5))
         shape.commit()
 
