@@ -6,6 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
 import subprocess
 import sys
 from datetime import date, datetime
@@ -262,8 +266,8 @@ def main(argv=None) -> int:
     )
     p.add_argument(
         "--output-dir",
-        default="/tmp/gtd_output",
-        help="Directory for generated files (default: /tmp/gtd_output).",
+        default=str(Path.home() / ".local" / "share" / "gtd"),
+        help="Directory for generated files (default: ~/.local/share/gtd).",
     )
     p.add_argument(
         "--date",
