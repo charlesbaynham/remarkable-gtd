@@ -24,7 +24,7 @@ def main(argv=None) -> int:
         "-o", "--output", default="decisions.json", help="Output decisions JSON path."
     )
     p.add_argument("--dpi", type=int, default=226, help="DPI for page rasterization.")
-    p.add_argument("--scale", type=int, default=1, help="Scale factor for page images (default 1).")
+    p.add_argument("--scale", type=int, default=1, help="Scale factor for page images.")
     args = p.parse_args(argv)
 
     manifest = load_manifest(args.manifest)

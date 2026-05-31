@@ -48,12 +48,17 @@ def find_reg_marks(binary: np.ndarray) -> dict[str, tuple[float, float]]:
                 continue
             area = bw * bh
             search_area = cw * ch
-            min_area = search_area * 0.005
-            max_area = search_area * 0.5
+            # Reg mark is ~0.8% of search area at design size.
+            # 0.5% min with 100px floor rejects noise on small images.
+            # 15% max accommodates synthetic tests (~900 px² cross on 800×600)
+            # while still rejecting large contaminants on real images.
+            min_area = max(100, search_area * 0.005)
+            max_area = search_area * 0.15
             if area < min_area or area > max_area:
                 continue
-            # Hard proximity: bbox must intersect the corner region
-            corner_r = max(80, min(cw, ch) * 0.25)
+            # Hard proximity: bbox must intersect the corner region.
+            # Scale-aware but capped so it never exceeds the search region.
+            corner_r = min(max(80, int(min(cw, ch) * 0.25)), min(cw, ch) - 1)
             if name == "tl" and (bx >= corner_r or by >= corner_r):
                 continue
             if name == "tr" and (
