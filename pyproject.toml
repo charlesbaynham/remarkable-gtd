@@ -23,6 +23,7 @@ dependencies = [
     "rmscene>=0.4",
     "pytest",
     "pdf2image",
+    "python-dotenv>=1.0",
 ]
 
 [project.scripts]
