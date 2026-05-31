@@ -47,23 +47,26 @@ def find_reg_marks(binary: np.ndarray) -> dict[str, tuple[float, float]]:
             if not (0.6 <= aspect <= 1.4):
                 continue
             area = bw * bh
-            if area < 100 or area > 8000:
+            search_area = cw * ch
+            min_area = search_area * 0.005
+            max_area = search_area * 0.5
+            if area < min_area or area > max_area:
                 continue
-            # Hard proximity: bbox must intersect the 80 px corner region
-            CORNER_R = 80
-            if name == "tl" and (bx >= CORNER_R or by >= CORNER_R):
+            # Hard proximity: bbox must intersect the corner region
+            corner_r = max(80, min(cw, ch) * 0.25)
+            if name == "tl" and (bx >= corner_r or by >= corner_r):
                 continue
             if name == "tr" and (
-                bx + bw <= region.shape[1] - CORNER_R or by >= CORNER_R
+                bx + bw <= region.shape[1] - corner_r or by >= corner_r
             ):
                 continue
             if name == "bl" and (
-                bx >= CORNER_R or by + bh <= region.shape[0] - CORNER_R
+                bx >= corner_r or by + bh <= region.shape[0] - corner_r
             ):
                 continue
             if name == "br" and (
-                bx + bw <= region.shape[1] - CORNER_R
-                or by + bh <= region.shape[0] - CORNER_R
+                bx + bw <= region.shape[1] - corner_r
+                or by + bh <= region.shape[0] - corner_r
             ):
                 continue
             # Check plus-ness: high fill in center bands, low in corners
