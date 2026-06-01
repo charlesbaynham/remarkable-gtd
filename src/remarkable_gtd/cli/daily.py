@@ -59,20 +59,21 @@ def run_daily(
     print("→ Parsing vault...")
     tasks = build_tasks_json(gtd_dir, the_date)
 
-    # 3. Write tasks.json
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = _timestamp()
-    tasks_path = output_dir / f"{ts}_tasks.json"
-    tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
-    print(f"  ✓ wrote {tasks_path}")
 
-    # 4. Generate PDF
+    # 3. Generate PDF — render_pdf assigns IDs to inbox/tickler items in-place via _with_ids
     pdf_path = output_dir / f"{ts}_gtd_sheet.pdf"
     manifest_path = output_dir / f"{ts}_gtd_sheet.manifest.json"
     print(f"→ Generating PDF ({pdf_path.name})...")
     render_pdf(tasks, the_date, pdf_path, manifest_path=manifest_path)
     print(f"  ✓ wrote {pdf_path}")
     print(f"  ✓ wrote {manifest_path}")
+
+    # 4. Write tasks.json after render so inbox/tickler IDs assigned by _with_ids are captured
+    tasks_path = output_dir / f"{ts}_tasks.json"
+    tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
+    print(f"  ✓ wrote {tasks_path}")
 
     # 5. Upload PDF to reMarkable
     print(f"→ Uploading to reMarkable folder '{remote_folder}'...")

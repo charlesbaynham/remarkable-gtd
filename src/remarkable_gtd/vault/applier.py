@@ -24,10 +24,7 @@ ACTION_TARGETS = {
 
 
 def _escape_regex(text: str) -> str:
-    """Escape text for use in regex, but allow partial matching."""
-    # Take first 30 chars as anchor for matching
-    anchor = text[:30] if len(text) > 30 else text
-    return re.escape(anchor)
+    return re.escape(text)
 
 
 def _remove_from_table(file_path: Path, action_text: str) -> bool:
@@ -182,6 +179,16 @@ def apply_task_decision(
 
     Returns a human-readable description of what was done, or None if skipped.
     """
+    # Normalize fields: pipeline stores {"text": str, "ocr_conf": ...} dicts; extract text, drop empties
+    fields = {
+        k: (v["text"].strip() if isinstance(v, dict) else str(v).strip())
+        for k, v in fields.items()
+        if (v["text"].strip() if isinstance(v, dict) else str(v).strip())
+    }
+
+    if action == "none" and not fields:
+        return None
+
     task = _lookup_task(tasks_json, task_id)
     if not task:
         return f"⚠ Could not find task {task_id} in tasks.json"
@@ -196,9 +203,8 @@ def apply_task_decision(
         "IN": gtd_dir / "Inbox.md",
         "NA": gtd_dir / "Next actions.md",
         "DG": gtd_dir / "Delegated.md",
-        "TK": None,  # Tickler source determined by search
     }
-    source_file = source_map.get(prefix)
+    source_file = source_map.get(prefix)  # None for TK — resolved by search below
 
     target_map = {
         "next": gtd_dir / "Next actions.md",
@@ -221,15 +227,36 @@ def apply_task_decision(
 
     src_type, target_key = ACTION_TARGETS[action]
 
-    if src_type == "remove":
-        # Remove from source
+    _tickler_files = [
+        gtd_dir / "Tickler" / "Next week.md",
+        gtd_dir / "Tickler" / "Next two weeks.md",
+        gtd_dir / "Tickler" / "Next month.md",
+        gtd_dir / "Tickler" / "Next quarter.md",
+    ]
+
+    def _remove_from_source() -> tuple[bool, str]:
+        """Try to remove action_text from the appropriate source file(s).
+
+        Returns (removed, source_name).
+        """
         if source_file:
-            removed = _remove_from_table(source_file, action_text)
-            if not removed:
-                # Try list format (Inbox)
-                removed = _remove_from_list_file(source_file, action_text)
-            if removed:
-                return f"✓ Removed {task_id} ({action}) from {source_file.name}"
+            if _remove_from_table(source_file, action_text):
+                return True, source_file.name
+            if _remove_from_list_file(source_file, action_text):
+                return True, source_file.name
+            return False, source_file.name
+        # TK: search all tickler files
+        for tf in _tickler_files:
+            if _remove_from_list_file(tf, action_text):
+                return True, tf.name
+            if _remove_from_table(tf, action_text):
+                return True, tf.name
+        return False, "tickler"
+
+    if src_type == "remove":
+        removed, src_name = _remove_from_source()
+        if removed:
+            return f"✓ Removed {task_id} ({action}) from {src_name}"
         return f"⚠ Could not remove {task_id}"
 
     # Move operation
@@ -238,11 +265,7 @@ def apply_task_decision(
         return f"⚠ Unknown target for action '{action}'"
 
     # Remove from source
-    removed = False
-    if source_file:
-        removed = _remove_from_table(source_file, action_text)
-        if not removed:
-            removed = _remove_from_list_file(source_file, action_text)
+    removed, src_name = _remove_from_source()
 
     # Append to target
     extra = {}
@@ -263,7 +286,6 @@ def apply_task_decision(
     else:
         _append_to_table(target_file, action_text, **extra)
 
-    src_name = source_file.name if source_file else "unknown"
     return f"✓ Moved {task_id} ({action}) from {src_name} to {target_file.name}"
 
 
@@ -294,8 +316,13 @@ def apply_decisions(
 
     results = []
 
-    # Handle tasks
-    for task in decisions.get("tasks", []):
+    # Flatten tasks from either single-page {"tasks": [...]} or multi-page {"pages": [...]} format
+    if "pages" in decisions:
+        all_tasks = [task for page in decisions["pages"] for task in page.get("tasks", [])]
+    else:
+        all_tasks = decisions.get("tasks", [])
+
+    for task in all_tasks:
         task_id = task.get("id", "")
         action = task.get("action", "none")
         fields = task.get("fields", {})
@@ -307,14 +334,11 @@ def apply_decisions(
         if desc:
             results.append(desc)
 
-    # Handle captures (from all pages)
+    # Handle captures from either format
     if "captures" in decisions:
-        capture_results = apply_captures(decisions["captures"], gtd_dir)
-        results.extend(capture_results)
+        results.extend(apply_captures(decisions["captures"], gtd_dir))
     elif "pages" in decisions:
-        # Multi-page format
-        for page in decisions.get("pages", []):
-            capture_results = apply_captures(page.get("captures", []), gtd_dir)
-            results.extend(capture_results)
+        for page in decisions["pages"]:
+            results.extend(apply_captures(page.get("captures", []), gtd_dir))
 
     return results
