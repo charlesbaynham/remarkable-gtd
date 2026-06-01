@@ -10,7 +10,6 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-import subprocess
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -19,50 +18,41 @@ from remarkable_gtd.gen.generate import render_pdf
 from remarkable_gtd.rm.api import mkdir, upload
 from remarkable_gtd.vault.parser import build_tasks_json
 
+from ._git import ensure_vault
+
 
 def _timestamp() -> str:
-    """Return UTC timestamp in YYYYMMDDZHHMM format."""
     return datetime.now(timezone.utc).strftime("%Y%m%dZ%H%M")
 
 
-def _git_pull(gtd_dir: Path) -> bool:
-    """Run git pull in the GTD directory."""
-    branch = os.environ.get("GTD_GIT_BRANCH", "master")
-    result = subprocess.run(
-        ["git", "pull", "origin", branch],
-        cwd=str(gtd_dir),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        print(f"Warning: git pull failed: {result.stderr.strip()}", file=sys.stderr)
-        return False
-    return True
-
-
 def run_daily(
-    gtd_dir: Path,
+    gtd_vault: str,
     remote_folder: str,
     output_dir: Path,
     the_date: date | None = None,
 ) -> int:
-    """Execute the daily workflow. Returns 0 on success."""
+    """Execute the daily workflow. Returns 0 on success.
+
+    ``gtd_vault`` may be a local path or a remote git URL.  When it is a URL
+    the repo is cloned/reset inside ``output_dir/vault`` and the local copy is
+    treated as fully disposable.
+    """
     if the_date is None:
         the_date = date.today()
 
-    # 1. Git pull
-    print(f"→ Pulling latest from GTD vault ({gtd_dir})...")
-    _git_pull(gtd_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Resolve vault (clone/reset if URL, validate if local path)
+    print(f"→ Syncing GTD vault ({gtd_vault})...")
+    gtd_dir = ensure_vault(gtd_vault, output_dir)
 
     # 2. Parse vault
     print("→ Parsing vault...")
     tasks = build_tasks_json(gtd_dir, the_date)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     ts = _timestamp()
 
-    # 3. Generate PDF — render_pdf assigns IDs to inbox/tickler items in-place via _with_ids
+    # 3. Generate PDF — render_pdf assigns IDs to inbox/tickler items in-place
     pdf_path = output_dir / f"{ts}_gtd_sheet.pdf"
     manifest_path = output_dir / f"{ts}_gtd_sheet.manifest.json"
     print(f"→ Generating PDF ({pdf_path.name})...")
@@ -70,7 +60,7 @@ def run_daily(
     print(f"  ✓ wrote {pdf_path}")
     print(f"  ✓ wrote {manifest_path}")
 
-    # 4. Write tasks.json after render so inbox/tickler IDs assigned by _with_ids are captured
+    # 4. Write tasks.json after render so IDs assigned by render_pdf are captured
     tasks_path = output_dir / f"{ts}_tasks.json"
     tasks_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
     print(f"  ✓ wrote {tasks_path}")
@@ -109,10 +99,16 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Morning GTD workflow: parse vault, generate PDF, upload to reMarkable."
     )
-    p.add_argument(
+    vault_grp = p.add_mutually_exclusive_group()
+    vault_grp.add_argument(
+        "--gtd-url",
+        default=os.environ.get("GTD_URL"),
+        help="Remote git URL for the GTD vault (cloned fresh into output-dir/vault).",
+    )
+    vault_grp.add_argument(
         "--gtd-dir",
-        default=os.environ.get("GTD_DIR", str(Path.home() / "gtd")),
-        help="Path to GTD vault (default: ~/gtd or $GTD_DIR).",
+        default=os.environ.get("GTD_DIR"),
+        help="Local path to GTD vault (used as-is, no git operations).",
     )
     p.add_argument(
         "--remarkable-folder",
@@ -131,10 +127,15 @@ def main(argv=None) -> int:
     )
     args = p.parse_args(argv)
 
-    gtd_dir = Path(args.gtd_dir)
-    if not gtd_dir.exists():
-        print(f"Error: GTD directory not found: {gtd_dir}", file=sys.stderr)
-        return 1
+    gtd_vault = args.gtd_url or args.gtd_dir
+    if not gtd_vault:
+        gtd_vault = str(Path.home() / "gtd")
+
+    # For local paths, check existence up-front
+    if "://" not in gtd_vault and not gtd_vault.startswith("git@"):
+        if not Path(gtd_vault).exists():
+            print(f"Error: GTD directory not found: {gtd_vault}", file=sys.stderr)
+            return 1
 
     if args.date:
         the_date = datetime.strptime(args.date, "%Y-%m-%d").date()
@@ -142,7 +143,7 @@ def main(argv=None) -> int:
         the_date = date.today()
 
     return run_daily(
-        gtd_dir=gtd_dir,
+        gtd_vault=gtd_vault,
         remote_folder=args.remarkable_folder,
         output_dir=Path(args.output_dir),
         the_date=the_date,

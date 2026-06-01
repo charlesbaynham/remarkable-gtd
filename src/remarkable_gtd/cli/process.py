@@ -6,102 +6,23 @@ from __future__ import annotations
 import argparse
 import json
 import os
-
-from dotenv import load_dotenv
-
-load_dotenv()
+import re
 import subprocess
 import sys
 from datetime import date, datetime
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from remarkable_gtd.rm.annotations import pdf_to_images
 from remarkable_gtd.rm.api import download, find_latest_gtd
 from remarkable_gtd.vault.applier import apply_decisions
 from remarkable_gtd.vault.parser import build_tasks_json
 
+from ._git import commit_and_push, ensure_vault
 from .daily import run_daily
-
-
-def _git_pull(gtd_dir: Path) -> bool:
-    """Run git pull in the GTD directory."""
-    branch = os.environ.get("GTD_GIT_BRANCH", "master")
-    result = subprocess.run(
-        ["git", "pull", "origin", branch],
-        cwd=str(gtd_dir),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        print(f"Warning: git pull failed: {result.stderr.strip()}", file=sys.stderr)
-        return False
-    return True
-
-
-def _git_commit_push(gtd_dir: Path) -> bool:
-    """Stage all changes, commit, and push."""
-    branch = os.environ.get("GTD_GIT_BRANCH", "master")
-
-    # Check if there are changes to commit
-    status = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=str(gtd_dir),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if status.returncode != 0:
-        print(f"Warning: git status failed: {status.stderr.strip()}", file=sys.stderr)
-        return False
-
-    if not status.stdout.strip():
-        print("  (no changes to commit)")
-        return True
-
-    # Add all changes
-    add_result = subprocess.run(
-        ["git", "add", "."],
-        cwd=str(gtd_dir),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if add_result.returncode != 0:
-        print(f"Warning: git add failed: {add_result.stderr.strip()}", file=sys.stderr)
-        return False
-
-    # Commit
-    commit_result = subprocess.run(
-        ["git", "commit", "-m", "GTD update from reMarkable"],
-        cwd=str(gtd_dir),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if commit_result.returncode != 0:
-        print(
-            f"Warning: git commit failed: {commit_result.stderr.strip()}",
-            file=sys.stderr,
-        )
-        return False
-
-    # Push
-    push_result = subprocess.run(
-        ["git", "push", "origin", branch],
-        cwd=str(gtd_dir),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if push_result.returncode != 0:
-        print(
-            f"Warning: git push failed: {push_result.stderr.strip()}", file=sys.stderr
-        )
-        return False
-
-    print("  ✓ committed and pushed changes")
-    return True
 
 
 def _find_manifest_for_date(output_dir: Path, the_date: date) -> Path | None:
@@ -115,18 +36,26 @@ def _find_manifest_for_date(output_dir: Path, the_date: date) -> Path | None:
 
 
 def run_process(
-    gtd_dir: Path,
+    gtd_vault: str,
     remote_folder: str,
     output_dir: Path,
     the_date: date | None = None,
 ) -> int:
-    """Execute the annotation processing workflow. Returns 0 on success."""
+    """Execute the annotation processing workflow. Returns 0 on success.
+
+    ``gtd_vault`` may be a local path or a remote git URL.  When it is a URL
+    the repo is cloned/reset inside ``output_dir/vault`` and treated as
+    disposable; after decisions are applied the changes are committed and
+    pushed back to the remote.
+    """
     if the_date is None:
         the_date = date.today()
 
-    # 1. Git pull
-    print(f"→ Pulling latest from GTD vault ({gtd_dir})...")
-    _git_pull(gtd_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Resolve vault (clone/reset if URL, validate if local path)
+    print(f"→ Syncing GTD vault ({gtd_vault})...")
+    gtd_dir = ensure_vault(gtd_vault, output_dir)
 
     # 2. Find latest GTD file on reMarkable
     print(f"→ Finding latest GTD file in '{remote_folder}'...")
@@ -136,19 +65,16 @@ def run_process(
         return 1
     print(f"  ✓ found {remote_path}")
 
-    # 3. Download rmdoc
+    # 3. Download annotated PDF
     print("→ Downloading from reMarkable...")
     rmdoc_path = download(remote_path, output_dir)
     if not rmdoc_path:
         print("Error: Failed to download file from reMarkable", file=sys.stderr)
         return 1
     print(f"  ✓ downloaded to {rmdoc_path}")
-
-    # 4. Annotated PDF already rendered server-side by rmapi geta --a
     annotated_pdf = rmdoc_path
-    print(f"  ✓ annotated PDF ready: {annotated_pdf.name}")
 
-    # 5. Extract page images
+    # 4. Extract page images
     images_dir = output_dir / "page_images"
     print("→ Extracting page images...")
     try:
@@ -158,10 +84,9 @@ def run_process(
         return 1
     print(f"  ✓ extracted {len(image_paths)} pages")
 
-    # 6. Find matching manifest
+    # 5. Find matching manifest
     manifest_path = _find_manifest_for_date(output_dir, the_date)
     if not manifest_path:
-        # Try to find any manifest in output_dir
         manifests = sorted(
             f
             for f in output_dir.iterdir()
@@ -171,30 +96,21 @@ def run_process(
             manifest_path = manifests[-1]
             print(f"  ⚠ using most recent manifest: {manifest_path.name}")
         else:
-            print(
-                "Error: No manifest file found. Run gtd-daily first.", file=sys.stderr
-            )
+            print("Error: No manifest file found. Run gtd-daily first.", file=sys.stderr)
             return 1
     else:
         print(f"  ✓ manifest: {manifest_path.name}")
 
-    # 7. Scan each page image
+    # 6. Scan pages for decisions
     decisions_path = output_dir / f"{the_date.isoformat()}_decisions.json"
     print("→ Scanning pages for decisions...")
-
-    # Use gtd-scan-pdf CLI for multi-page PDF scanning
     scan_result = subprocess.run(
         [
-            sys.executable,
-            "-m",
-            "remarkable_gtd.cli.scan_pdf",
+            sys.executable, "-m", "remarkable_gtd.cli.scan_pdf",
             str(annotated_pdf),
-            "--manifest",
-            str(manifest_path),
-            "--ocr",
-            "tesseract",
-            "-o",
-            str(decisions_path),
+            "--manifest", str(manifest_path),
+            "--ocr", "tesseract",
+            "-o", str(decisions_path),
         ],
         capture_output=True,
         text=True,
@@ -205,19 +121,14 @@ def run_process(
         return 1
     print(f"  ✓ wrote {decisions_path}")
 
-    # 8. Apply decisions
+    # 7. Resolve tasks.json for this date (from the matching manifest timestamp)
     print("→ Applying decisions to vault...")
-    # Derive tasks.json path from manifest: "{ts}_gtd_sheet.manifest.json" -> "{ts}_tasks.json"
     tasks_json_path = None
-    manifest_for_tasks = _find_manifest_for_date(output_dir, the_date)
-    if manifest_for_tasks:
-        import re as _re
-
-        m = _re.match(r"(\d{8}Z\d{4})_", manifest_for_tasks.name)
+    if manifest_path:
+        m = re.match(r"(\d{8}Z\d{4})_", manifest_path.name)
         if m:
             tasks_json_path = output_dir / f"{m.group(1)}_tasks.json"
     if not tasks_json_path or not tasks_json_path.exists():
-        # Re-parse to get current tasks.json
         tasks = build_tasks_json(gtd_dir, the_date)
         tasks_json_path = output_dir / f"{the_date.isoformat()}_tasks.json"
         tasks_json_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
@@ -232,14 +143,14 @@ def run_process(
         print(f"    {result}")
     print(f"  ✓ applied {len(results)} changes")
 
-    # 9. Git commit and push
+    # 8. Commit and push vault changes back to remote
     print("→ Committing changes...")
-    _git_commit_push(gtd_dir)
+    commit_and_push(gtd_dir)
 
-    # 10. Regenerate PDF and upload (daily workflow)
+    # 9. Regenerate PDF and upload
     print("\n→ Regenerating daily sheet...")
     return run_daily(
-        gtd_dir=gtd_dir,
+        gtd_vault=gtd_vault,
         remote_folder=remote_folder,
         output_dir=output_dir,
         the_date=the_date,
@@ -250,10 +161,16 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Process annotated GTD sheet: download, scan, apply decisions, regenerate."
     )
-    p.add_argument(
+    vault_grp = p.add_mutually_exclusive_group()
+    vault_grp.add_argument(
+        "--gtd-url",
+        default=os.environ.get("GTD_URL"),
+        help="Remote git URL for the GTD vault (cloned fresh into output-dir/vault).",
+    )
+    vault_grp.add_argument(
         "--gtd-dir",
-        default=os.environ.get("GTD_DIR", str(Path.home() / "gtd")),
-        help="Path to GTD vault (default: ~/gtd or $GTD_DIR).",
+        default=os.environ.get("GTD_DIR"),
+        help="Local path to GTD vault (used as-is, no git operations).",
     )
     p.add_argument(
         "--remarkable-folder",
@@ -272,10 +189,14 @@ def main(argv=None) -> int:
     )
     args = p.parse_args(argv)
 
-    gtd_dir = Path(args.gtd_dir)
-    if not gtd_dir.exists():
-        print(f"Error: GTD directory not found: {gtd_dir}", file=sys.stderr)
-        return 1
+    gtd_vault = args.gtd_url or args.gtd_dir
+    if not gtd_vault:
+        gtd_vault = str(Path.home() / "gtd")
+
+    if "://" not in gtd_vault and not gtd_vault.startswith("git@"):
+        if not Path(gtd_vault).exists():
+            print(f"Error: GTD directory not found: {gtd_vault}", file=sys.stderr)
+            return 1
 
     if args.date:
         the_date = datetime.strptime(args.date, "%Y-%m-%d").date()
@@ -283,7 +204,7 @@ def main(argv=None) -> int:
         the_date = date.today()
 
     return run_process(
-        gtd_dir=gtd_dir,
+        gtd_vault=gtd_vault,
         remote_folder=args.remarkable_folder,
         output_dir=Path(args.output_dir),
         the_date=the_date,
