@@ -1,6 +1,6 @@
 # remarkable-gtd — multi-stage build
 # Stage 1: build rmapi from source
-FROM golang:1.22-bookworm AS rmapi-builder
+FROM golang:1.23-bookworm AS rmapi-builder
 RUN git clone --depth 1 https://github.com/ddvk/rmapi.git /src/rmapi
 WORKDIR /src/rmapi
 RUN go build -o /usr/local/bin/rmapi .
@@ -24,7 +24,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml .
 COPY src/ ./src/
-RUN uv sync --extra gen --extra scan
+RUN uv sync
 
 # Install Playwright Chromium into a fixed system path accessible to all users
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
