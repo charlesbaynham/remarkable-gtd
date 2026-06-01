@@ -63,19 +63,31 @@ def upload(local_path: Path, remote_folder: str) -> bool:
 def download(remote_path: str, local_dir: Path) -> Path | None:
     """Download a file from reMarkable.
 
-    Downloads the .rmdoc file (zip containing PDF + annotations).
+    Downloads the annotated PDF (reMarkable renders annotations server-side).
+    Uses 'rmapi geta --a' which requires the --all-pages flag to produce
+    a valid PDF with reMarkable software 3.x+.
 
     Args:
         remote_path: Remote file path (e.g. "GTD Daily/sheet.pdf").
         local_dir: Local directory to save to.
 
     Returns:
-        Path to downloaded file, or None on failure.
+        Path to downloaded annotated PDF, or None on failure.
     """
     local_dir.mkdir(parents=True, exist_ok=True)
-    # rmapi get downloads to current directory
+    base_name = Path(remote_path).name
+    # rmapi geta --a outputs: {base_name}-annotations.pdf
+    downloaded = local_dir / f"{base_name}-annotations.pdf"
+    # Rename to the conventional _annotated.pdf suffix expected by callers
+    renamed = local_dir / f"{base_name}_annotated.pdf"
+
+    # Clean up any stale downloads
+    for p in (downloaded, renamed):
+        if p.exists():
+            p.unlink()
+
     result = subprocess.run(
-        _rmapi_cmd() + ["get", remote_path],
+        _rmapi_cmd() + ["geta", "--a", remote_path],
         cwd=str(local_dir),
         capture_output=True,
         text=True,
@@ -84,24 +96,20 @@ def download(remote_path: str, local_dir: Path) -> Path | None:
     if result.returncode != 0:
         return None
 
-    # Find the downloaded file (.rmdoc or .pdf)
-    # rmapi typically downloads as filename.rmdoc
-    base_name = Path(remote_path).name
-    for ext in [".rmdoc", ".pdf"]:
-        candidate = local_dir / (
-            base_name + ext if not base_name.endswith(ext) else base_name
-        )
-        if candidate.exists():
-            return candidate
-        # Also try without extension changes
-        candidate2 = local_dir / base_name
-        if candidate2.exists():
-            return candidate2
+    if downloaded.exists():
+        downloaded.rename(renamed)
+        return renamed
 
-    # Fallback: return most recently modified file in directory
-    files = [f for f in local_dir.iterdir() if f.is_file()]
-    if files:
-        return max(files, key=lambda f: f.stat().st_mtime)
+    # Fallback: search for *-annotations.pdf in directory
+    candidates = sorted(
+        local_dir.glob("*-annotations.pdf"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if candidates:
+        candidates[0].rename(renamed)
+        return renamed
+
     return None
 
 

@@ -15,7 +15,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from remarkable_gtd.rm.annotations import pdf_to_images, render_rmdoc
+from remarkable_gtd.rm.annotations import pdf_to_images
 from remarkable_gtd.rm.api import download, find_latest_gtd
 from remarkable_gtd.vault.applier import apply_decisions
 from remarkable_gtd.vault.parser import build_tasks_json
@@ -144,15 +144,9 @@ def run_process(
         return 1
     print(f"  ✓ downloaded to {rmdoc_path}")
 
-    # 4. Render annotations
-    annotated_pdf = output_dir / f"{rmdoc_path.stem}_annotated.pdf"
-    print("→ Rendering annotations...")
-    try:
-        render_rmdoc(rmdoc_path, annotated_pdf)
-    except Exception as e:
-        print(f"Error: Failed to render annotations: {e}", file=sys.stderr)
-        return 1
-    print(f"  ✓ wrote {annotated_pdf}")
+    # 4. Annotated PDF already rendered server-side by rmapi geta --a
+    annotated_pdf = rmdoc_path
+    print(f"  ✓ annotated PDF ready: {annotated_pdf.name}")
 
     # 5. Extract page images
     images_dir = output_dir / "page_images"
