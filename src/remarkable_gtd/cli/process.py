@@ -36,7 +36,11 @@ def _find_manifest_for_ts(output_dir: Path, ts: str) -> Path | None:
 def _find_any_manifest(output_dir: Path) -> Path | None:
     """Return the most recently created manifest in output_dir, or None."""
     candidates = sorted(
-        (f for f in output_dir.iterdir() if f.is_file() and f.name.endswith(".manifest.json")),
+        (
+            f
+            for f in output_dir.iterdir()
+            if f.is_file() and f.name.endswith(".manifest.json")
+        ),
         key=lambda f: f.stat().st_mtime,
         reverse=True,
     )
@@ -86,8 +90,10 @@ def run_process(
         print("→ Downloading annotated PDF...")
         rmdoc_path = download(remote_path, output_dir)
         if not rmdoc_path:
-            print("  ⚠ download failed — skipping scan, generating fresh sheet",
-                  file=sys.stderr)
+            print(
+                "  ⚠ download failed — skipping scan, generating fresh sheet",
+                file=sys.stderr,
+            )
         else:
             print(f"  ✓ downloaded {rmdoc_path.name}")
             annotated_pdf = rmdoc_path
@@ -104,8 +110,10 @@ def run_process(
                 print(f"  ⚠ exact manifest not found, using {manifest_path.name}")
 
         if not manifest_path:
-            print("  ⚠ no manifest found — cannot scan; run will still regenerate the sheet",
-                  file=sys.stderr)
+            print(
+                "  ⚠ no manifest found — cannot scan; run will still regenerate the sheet",
+                file=sys.stderr,
+            )
             annotated_pdf = None  # skip apply step
 
     if annotated_pdf and manifest_path:
@@ -113,11 +121,16 @@ def run_process(
         print("→ Scanning pages for decisions...")
         scan_result = subprocess.run(
             [
-                sys.executable, "-m", "remarkable_gtd.cli.scan_pdf",
+                sys.executable,
+                "-m",
+                "remarkable_gtd.cli.scan_pdf",
                 str(annotated_pdf),
-                "--manifest", str(manifest_path),
-                "--ocr", "tesseract",
-                "-o", str(decisions_path),
+                "--manifest",
+                str(manifest_path),
+                "--ocr",
+                "tesseract",
+                "-o",
+                str(decisions_path),
             ],
             capture_output=True,
             text=True,
@@ -141,7 +154,9 @@ def run_process(
                 # Re-parse from vault as fallback
                 tasks = build_tasks_json(gtd_dir, the_date)
                 tasks_json_path = output_dir / f"{the_date.isoformat()}_tasks.json"
-                tasks_json_path.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
+                tasks_json_path.write_text(
+                    json.dumps(tasks, indent=2), encoding="utf-8"
+                )
 
             try:
                 results = apply_decisions(decisions_path, tasks_json_path, gtd_dir)
@@ -216,7 +231,9 @@ def main(argv=None) -> int:
     )
     p.add_argument(
         "--output-dir",
-        default=os.environ.get("OUTPUT_DIR", str(Path.home() / ".local" / "share" / "gtd")),
+        default=os.environ.get(
+            "OUTPUT_DIR", str(Path.home() / ".local" / "share" / "gtd")
+        ),
         help="Directory for generated files.",
     )
     p.add_argument("--date", default=None, help="Override date (YYYY-MM-DD).")
