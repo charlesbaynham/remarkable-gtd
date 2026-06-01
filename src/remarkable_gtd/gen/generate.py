@@ -61,6 +61,22 @@ def qr_datauri(text: str) -> str:
 # --------------------------------------------------------------------------
 # Data shaping
 # --------------------------------------------------------------------------
+def assign_task_ids(tasks: dict) -> None:
+    """Assign IDs in-place to any inbox/tickler items that lack them.
+
+    Called before render and before writing tasks.json so that the saved
+    manifest and tasks file share the same stable IDs used in QR codes.
+    """
+    for i, item in enumerate(tasks.get("inbox", []), 1):
+        item.setdefault("id", f"IN-{i:02d}")
+    tick = tasks.get("tickler", {}) or {}
+    n = 1
+    for period in ("week", "month", "quarter"):
+        for item in tick.get(period, []):
+            item.setdefault("id", f"TK-{n:02d}")
+            n += 1
+
+
 def _with_ids(items, prefix, start=1):
     out = []
     for i, t in enumerate(items, start):
@@ -185,6 +201,9 @@ def render_pdf(
 
     from .manifest import collect_rois, write_manifest
 
+    assign_task_ids(
+        data
+    )  # mutates data in-place so caller's tasks dict has IDs for tasks.json
     buckets = build_buckets(data)
     total = len(buckets)
     env, tmpl_text = _env()
