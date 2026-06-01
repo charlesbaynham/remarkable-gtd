@@ -51,9 +51,9 @@ def test_e2e_done_tick(tmp_path, tasks_min_path):
 
     # Find NA-01 task result
     na01 = next((t for t in decisions["tasks"] if t["id"] == "NA-01"), None)
-    assert (
-        na01 is not None
-    ), f"NA-01 not found in decisions. Tasks: {[t['id'] for t in decisions['tasks']]}"
+    assert na01 is not None, (
+        f"NA-01 not found in decisions. Tasks: {[t['id'] for t in decisions['tasks']]}"
+    )
     assert na01["action"] == "done", f"Expected action='done', got {na01['action']}"
 
 
@@ -89,6 +89,6 @@ def test_e2e_no_ticks_all_none(tmp_path, tasks_min_path):
     decisions = run_scan(image_path, manifest, cfg, page_key=next_key)
 
     for task in decisions["tasks"]:
-        assert (
-            task["action"] == "none"
-        ), f"Task {task['id']} action={task['action']} (expected none)"
+        assert task["action"] == "none", (
+            f"Task {task['id']} action={task['action']} (expected none)"
+        )

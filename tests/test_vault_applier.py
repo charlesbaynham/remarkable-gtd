@@ -35,7 +35,7 @@ def sample_vault(tmp_path: Path) -> Path:
     )
 
     (gtd / "Inbox.md").write_text(
-        "Reply to reviewer\n" "Book flights\n",
+        "Reply to reviewer\nBook flights\n",
         encoding="utf-8",
     )
 

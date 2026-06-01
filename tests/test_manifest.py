@@ -55,9 +55,9 @@ def test_rects_normalized(rendered_sheet):
         for roi_key, rect in page["rois"].items():
             for coord in ["x", "y", "w", "h"]:
                 assert coord in rect, f"Missing {coord} in {roi_key}"
-                assert (
-                    0.0 <= rect[coord] <= 1.0
-                ), f"{roi_key}.{coord} = {rect[coord]} not in [0,1]"
+                assert 0.0 <= rect[coord] <= 1.0, (
+                    f"{roi_key}.{coord} = {rect[coord]} not in [0,1]"
+                )
 
 
 def test_reg_marks_in_corners(rendered_sheet):
