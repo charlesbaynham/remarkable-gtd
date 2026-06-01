@@ -318,7 +318,9 @@ def apply_decisions(
 
     # Flatten tasks from either single-page {"tasks": [...]} or multi-page {"pages": [...]} format
     if "pages" in decisions:
-        all_tasks = [task for page in decisions["pages"] for task in page.get("tasks", [])]
+        all_tasks = [
+            task for page in decisions["pages"] for task in page.get("tasks", [])
+        ]
     else:
         all_tasks = decisions.get("tasks", [])
 

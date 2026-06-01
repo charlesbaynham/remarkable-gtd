@@ -201,7 +201,9 @@ def render_pdf(
 
     from .manifest import collect_rois, write_manifest
 
-    assign_task_ids(data)  # mutates data in-place so caller's tasks dict has IDs for tasks.json
+    assign_task_ids(
+        data
+    )  # mutates data in-place so caller's tasks dict has IDs for tasks.json
     buckets = build_buckets(data)
     total = len(buckets)
     env, tmpl_text = _env()

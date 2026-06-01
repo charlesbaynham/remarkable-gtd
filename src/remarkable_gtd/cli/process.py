@@ -212,6 +212,7 @@ def run_process(
     manifest_for_tasks = _find_manifest_for_date(output_dir, the_date)
     if manifest_for_tasks:
         import re as _re
+
         m = _re.match(r"(\d{8}Z\d{4})_", manifest_for_tasks.name)
         if m:
             tasks_json_path = output_dir / f"{m.group(1)}_tasks.json"
