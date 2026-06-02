@@ -59,9 +59,11 @@ def extract_from_rmdoc(
             return pdf_bytes, {0: first_rm} if first_rm else {}
 
         content = json.loads(z.read(content_name))
-        pages = content.get("pages", [])
-        # Build UUID -> page_index mapping
-        uuid_to_index = {uuid: i for i, uuid in enumerate(pages)}
+        pages = content.get("cPages", {}).get("pages", [])
+        # Each page entry has {"id": "<uuid>", "redir": {"value": <pdf_page_idx>}}
+        uuid_to_index = {
+            p["id"]: p.get("redir", {}).get("value", i) for i, p in enumerate(pages)
+        }
 
         # Map rm files to page indices
         rm_by_page = {}
