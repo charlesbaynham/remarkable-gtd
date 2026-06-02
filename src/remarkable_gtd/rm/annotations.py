@@ -62,8 +62,7 @@ def extract_from_rmdoc(
         pages = content.get("cPages", {}).get("pages", [])
         # Each page entry has {"id": "<uuid>", "redir": {"value": <pdf_page_idx>}}
         uuid_to_index = {
-            p["id"]: p.get("redir", {}).get("value", i)
-            for i, p in enumerate(pages)
+            p["id"]: p.get("redir", {}).get("value", i) for i, p in enumerate(pages)
         }
 
         # Map rm files to page indices
