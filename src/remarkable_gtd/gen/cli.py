@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-"""gtd-gen CLI entry point."""
-
+"""gtd-gen — CLI entry point for the GTD PDF generator."""
 from __future__ import annotations
 
 import argparse
@@ -8,16 +6,17 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
-from .generate import build_buckets, render_pdf
-
 
 def main(argv=None) -> int:
+    """Generate the GTD reMarkable PDF (one tall page per bucket)."""
     p = argparse.ArgumentParser(
         description="Generate the GTD reMarkable PDF (one tall page per bucket)."
     )
     p.add_argument("tasks", help="Path to tasks JSON (see tasks.example.json).")
     p.add_argument("--out", default="gtd-sheet.pdf", help="Output PDF path.")
-    p.add_argument("--date", default=None, help="Override sheet date (YYYY-MM-DD).")
+    p.add_argument(
+        "--date", default=None, help="Override sheet date (YYYY-MM-DD)."
+    )
     p.add_argument(
         "--html",
         default=None,
@@ -26,10 +25,14 @@ def main(argv=None) -> int:
     p.add_argument(
         "--manifest",
         default=None,
-        help="Manifest output path (default: <out>.manifest.json).",
+        metavar="PATH",
+        help="Path for the layout manifest JSON sidecar (default: <out>.manifest.json).",
     )
     p.add_argument(
-        "--no-manifest", action="store_true", help="Suppress manifest sidecar output."
+        "--no-manifest",
+        action="store_true",
+        default=False,
+        help="Suppress manifest sidecar output.",
     )
     args = p.parse_args(argv)
 
@@ -44,23 +47,30 @@ def main(argv=None) -> int:
 
     out_path = Path(args.out)
 
+    # Resolve manifest_path
     if args.no_manifest:
         manifest_path = None
     elif args.manifest:
         manifest_path = Path(args.manifest)
     else:
-        manifest_path = out_path.with_suffix(".manifest.json")
+        manifest_path = ...  # use default (sentinel) in render_pdf
+
+    from remarkable_gtd.gen.generate import render_pdf, build_buckets
 
     render_pdf(
         data,
         the_date,
         out_path,
-        debug_html=Path(args.html) if args.html else None,
+        Path(args.html) if args.html else None,
         manifest_path=manifest_path,
     )
-    print(
-        f"✓ wrote {args.out}  ({the_date.isoformat()}, {len(build_buckets(data))} pages)"
-    )
+
+    n_pages = len(build_buckets(data))
+    manifest_note = ""
+    if not args.no_manifest:
+        mp = Path(args.manifest) if args.manifest else out_path.with_suffix(".manifest.json")
+        manifest_note = f"  manifest -> {mp}"
+    print(f"wrote {out_path}  ({the_date.isoformat()}, {n_pages} pages){manifest_note}")
     return 0
 
 

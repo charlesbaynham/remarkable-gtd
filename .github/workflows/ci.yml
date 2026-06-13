@@ -2,46 +2,38 @@ name: CI
 
 on:
   push:
-    branches: [main, 'claude/**']
-  pull_request:
     branches: [main]
+  pull_request:
 
 jobs:
   scan-unit:
+    # Fast job: CV/logic tests only — no Chromium needed.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libzbar0 tesseract-ocr poppler-utils
-      - name: Install Python package
-        run: |
-          pip install -e ".[scan,dev]"
-      - name: Run scan-unit tests
-        run: |
-          pytest -k "not (end_to_end or manifest)" --tb=short
+          python-version: "3.12"
+      - name: System deps
+        run: sudo apt-get update && sudo apt-get install -y libzbar0 tesseract-ocr poppler-utils
+      - name: Install
+        run: pip install -e ".[scan,dev]"
+      - name: Test (render-independent)
+        run: pytest tests/test_ink.py tests/test_decisions.py tests/test_rectify.py tests/test_qr.py -v
 
   full:
+    # Full job: generator + manifest + end-to-end (renders with Chromium).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libzbar0 tesseract-ocr poppler-utils
-      - name: Install Python package
+          python-version: "3.12"
+      - name: System deps
+        run: sudo apt-get update && sudo apt-get install -y libzbar0 tesseract-ocr poppler-utils
+      - name: Install
         run: |
           pip install -e ".[gen,scan,dev]"
-      - name: Install Playwright browsers
-        run: |
           playwright install --with-deps chromium
-      - name: Run full test suite
-        run: |
-          pytest --tb=short
+      - name: Test (all)
+        run: pytest -v

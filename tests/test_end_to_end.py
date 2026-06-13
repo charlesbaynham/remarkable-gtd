@@ -1,94 +1,115 @@
-"""End-to-end integration test: render → paint ink → scan → verify decisions."""
+"""End-to-end: render -> rasterize -> paint synthetic ink -> scan -> assert.
 
+The generator is the scanner's ground-truth simulator: we choose decisions
+in code, paint them into manifest ROIs, and assert the pipeline recovers
+exactly those decisions. NullEngine keeps the OCR-trigger logic
+deterministic (fields appear iff the slot is inked).
+"""
 from __future__ import annotations
 
-import json
-from datetime import date
+from pathlib import Path
 
-import cv2
 import pytest
 
-pytestmark = pytest.mark.usefixtures("_playwright_available")
+from remarkable_gtd.common.schema import make_page_key
+from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
+from tests.conftest import needs_chromium, paint_ink, rasterize_page, warp_image
+
+pytestmark = needs_chromium
+
+NEXT_KEY = make_page_key("next", "2026-05-30")
+INBOX_KEY = make_page_key("inbox", "2026-05-30")
 
 
-def test_e2e_done_tick(tmp_path, tasks_min_path):
-    """Render tasks.min.json, paint a 'done' tick on NA-01, run_scan, assert action=='done'."""
-    from remarkable_gtd.gen.generate import render_pdf
-    from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
-    from tests.conftest import paint_ink, rasterize_page
+def save_png(img, path: Path) -> Path:
+    from PIL import Image
 
-    data = json.loads(tasks_min_path.read_text(encoding="utf-8"))
-    pdf_path = tmp_path / "sheet.pdf"
-    manifest_path = tmp_path / "sheet.manifest.json"
-    render_pdf(data, date(2026, 5, 30), pdf_path, manifest_path=manifest_path)
-
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-
-    # Find the next-actions page
-    next_key = None
-    for key, page in manifest["pages"].items():
-        if page["bucket"] == "next":
-            next_key = key
-            break
-    assert next_key is not None
-
-    manifest_page = manifest["pages"][next_key]
-    page_idx = manifest_page["page_no"] - 1  # zero-based
-
-    # Rasterize the next-actions page
-    img = rasterize_page(pdf_path, page_index=page_idx, dpi=226)
-
-    # Paint a tick in NA-01's done box
-    img_inked = paint_ink(img, manifest_page, "NA-01:done", style="tick")
-
-    # Save as PNG for scanning
-    image_path = tmp_path / "inked.png"
-    cv2.imwrite(str(image_path), cv2.cvtColor(img_inked, cv2.COLOR_RGB2BGR))
-
-    # Run scan with NullEngine
-    cfg = ScanConfig(ocr_engine="null", ink_fill_threshold=0.06)
-    decisions = run_scan(image_path, manifest, cfg, page_key=next_key)
-
-    # Find NA-01 task result
-    na01 = next((t for t in decisions["tasks"] if t["id"] == "NA-01"), None)
-    assert (
-        na01 is not None
-    ), f"NA-01 not found in decisions. Tasks: {[t['id'] for t in decisions['tasks']]}"
-    assert na01["action"] == "done", f"Expected action='done', got {na01['action']}"
+    Image.fromarray(img).save(path)
+    return path
 
 
-def test_e2e_no_ticks_all_none(tmp_path, tasks_min_path):
-    """Render with no ticks → all actions are 'none'."""
-    from remarkable_gtd.gen.generate import render_pdf
-    from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
-    from tests.conftest import rasterize_page
+@pytest.fixture()
+def next_page_img(rendered_sheet):
+    pdf_path, _ = rendered_sheet
+    return rasterize_page(pdf_path, 1)  # page 2 of 4 = next
 
-    data = json.loads(tasks_min_path.read_text(encoding="utf-8"))
-    pdf_path = tmp_path / "sheet.pdf"
-    manifest_path = tmp_path / "sheet.manifest.json"
-    render_pdf(data, date(2026, 5, 30), pdf_path, manifest_path=manifest_path)
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+def by_id(decisions: dict) -> dict:
+    return {t["id"]: t for t in decisions["tasks"]}
 
-    # Test on the next-actions page without any ink
-    next_key = None
-    for key, page in manifest["pages"].items():
-        if page["bucket"] == "next":
-            next_key = key
-            break
-    assert next_key is not None
 
-    manifest_page = manifest["pages"][next_key]
-    page_idx = manifest_page["page_no"] - 1
+def test_clean_page_all_none(next_page_img, manifest, tmp_path):
+    img_path = save_png(next_page_img, tmp_path / "clean.png")
+    decisions = run_scan(img_path, manifest, ScanConfig(), page_key=NEXT_KEY)
 
-    img = rasterize_page(pdf_path, page_index=page_idx, dpi=226)
-    image_path = tmp_path / "no_ink.png"
-    cv2.imwrite(str(image_path), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+    tasks = by_id(decisions)
+    assert set(tasks) == {"NA-01", "NA-02"}
+    for t in tasks.values():
+        assert t["action"] == "none"
+        assert t["edited"] is False
+        assert "fields" not in t
+        assert t["qr_verified"] is True
+    assert decisions["header_qr"] == NEXT_KEY
+    assert decisions["rectify"]["reg_marks_found"] == 4
 
-    cfg = ScanConfig(ocr_engine="null", ink_fill_threshold=0.06)
-    decisions = run_scan(image_path, manifest, cfg, page_key=next_key)
 
-    for task in decisions["tasks"]:
-        assert (
-            task["action"] == "none"
-        ), f"Task {task['id']} action={task['action']} (expected none)"
+def test_ticked_decisions_recovered(next_page_img, manifest, tmp_path):
+    page = manifest["pages"][NEXT_KEY]
+    img = paint_ink(next_page_img, page, "NA-01:done", "tick")
+    img = paint_ink(img, page, "NA-02:defer_1m", "tick")
+    img = paint_ink(img, page, "NA-02:edit", "tick")
+    img = paint_ink(img, page, "NA-02:slot_due", "text:6 Jun")
+    img_path = save_png(img, tmp_path / "ticked.png")
+
+    decisions = run_scan(img_path, manifest, ScanConfig(), page_key=NEXT_KEY)
+    tasks = by_id(decisions)
+
+    assert tasks["NA-01"]["action"] == "done"
+    assert tasks["NA-01"]["edited"] is False
+
+    assert tasks["NA-02"]["action"] == "defer"
+    assert tasks["NA-02"]["defer_period"] == "1m"
+    assert tasks["NA-02"]["edited"] is True
+    # OCR trigger logic: the inked slot must appear even with NullEngine.
+    assert "due" in tasks["NA-02"]["fields"]
+    # NA-01's slots were untouched.
+    assert "fields" not in tasks["NA-01"]
+
+
+def test_survives_rotation_and_keystone(next_page_img, manifest, tmp_path):
+    page = manifest["pages"][NEXT_KEY]
+    img = paint_ink(next_page_img, page, "NA-01:done", "tick")
+    img = warp_image(img, angle_deg=2.0, keystone=0.008)
+    img_path = save_png(img, tmp_path / "warped.png")
+
+    decisions = run_scan(img_path, manifest, ScanConfig(), page_key=NEXT_KEY)
+    tasks = by_id(decisions)
+    assert tasks["NA-01"]["action"] == "done"
+    assert tasks["NA-02"]["action"] == "none"
+    assert decisions["rectify"]["residual_px"] is not None
+    assert decisions["rectify"]["residual_px"] < 5.0
+
+
+def test_page_autodetected_from_qr(next_page_img, manifest, tmp_path):
+    img_path = save_png(next_page_img, tmp_path / "auto.png")
+    decisions = run_scan(img_path, manifest, ScanConfig())  # no page_key
+    assert decisions["bucket"] == "next"
+
+
+def test_inbox_capture_line(rendered_sheet, manifest, tmp_path):
+    pdf_path, _ = rendered_sheet
+    img = rasterize_page(pdf_path, 0)  # inbox page
+    page = manifest["pages"][INBOX_KEY]
+
+    img = paint_ink(img, page, "capture:N1:box", "tick")
+    img = paint_ink(img, page, "IN-01:to_next", "tick")
+    img_path = save_png(img, tmp_path / "inbox.png")
+
+    decisions = run_scan(img_path, manifest, ScanConfig(), page_key=INBOX_KEY)
+
+    tasks = by_id(decisions)
+    assert tasks["IN-01"]["action"] == "to_next"
+
+    captures = {c["line"]: c for c in decisions["captures"]}
+    assert captures["N1"]["inked"] is True
+    assert all(not c["inked"] for line, c in captures.items() if line != "N1")

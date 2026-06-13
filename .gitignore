@@ -7,9 +7,14 @@ __pycache__/
 *$py.class
 *.egg-info/
 .venv/
+venv/
+build/
+dist/
+.pytest_cache/
 *.manifest.json
 *-inbox.html
 *-next.html
 *-delegated.html
 *-tickler.html
+debug*.html
 .direnv
