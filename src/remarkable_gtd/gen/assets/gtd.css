@@ -1,0 +1,180 @@
+/* ============================================================
+   GTD reMarkable Sheet — shared print stylesheet
+   Two readers: your stylus + the nightly vision agent.
+   Rules: 100% black on 100% white, no greys/fills, hard
+   bounded zones, generous write-in space. Sized to the
+   reMarkable 2 panel (1404x1872 px @ 226dpi = 157.8 x 210.4 mm).
+   ============================================================ */
+
+:root {
+  --ink: #000;
+  --paper: #fff;
+  --pen: 0.45mm solid #000;     /* structural rules */
+  --pen-thin: 0.3mm solid #000; /* internal hairlines */
+  --pen-box: 0.45mm solid #000; /* checkbox / blank strokes */
+  --pad: 9mm;                   /* page side padding */
+}
+
+@page {
+  size: 157.8mm auto;   /* width matches the reMarkable 2 panel; height grows */
+  margin: 0;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', 'Source Sans 3', system-ui, sans-serif;
+  -webkit-font-smoothing: none;          /* crisp edges for OCR */
+  text-rendering: geometricPrecision;
+}
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+/* ---------- PAGE ----------
+   One page per GTD bucket. Width is fixed to the reMarkable 2 panel;
+   height grows to fit the whole list (digital-only — never paginated),
+   with a one-screen minimum so short lists don't look stubby. */
+.page {
+  position: relative;
+  width: 157.8mm;
+  min-height: 210.4mm;
+  background: var(--paper);
+  padding: var(--pad) var(--pad) 13mm;
+  display: flex;
+  flex-direction: column;
+}
+
+/* corner registration marks — give the vision agent a frame
+   to rectify rotation / perspective before reading marks */
+.reg { position: absolute; width: 5mm; height: 5mm; }
+.reg::before, .reg::after { content: ""; position: absolute; background: var(--ink); }
+.reg::before { width: 5mm; height: 0.6mm; }
+.reg::after  { width: 0.6mm; height: 5mm; }
+.reg.tl { top: 4mm; left: 4mm; }
+.reg.tr { top: 4mm; right: 4mm; }
+.reg.tr::before { right: 0; } .reg.tr::after { right: 0; }
+.reg.bl { bottom: 4mm; left: 4mm; }
+.reg.bl::before { bottom: 0; } .reg.bl::after { bottom: 0; }
+.reg.br { bottom: 4mm; right: 4mm; }
+.reg.br::before { bottom: 0; right: 0; } .reg.br::after { bottom: 0; right: 0; }
+
+/* ---------- HEADER ---------- */
+.head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  border-bottom: 0.9mm solid var(--ink);
+  padding-bottom: 3mm;
+}
+.head-l { display: flex; align-items: center; gap: 4mm; flex: 1; min-width: 0; }
+.head-tag {                 /* GTD bucket letter, big & unmistakable */
+  width: 13mm; height: 13mm; border: 0.7mm solid var(--ink);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 20pt; line-height: 1;
+}
+.head-title { font-size: 20pt; font-weight: 700; letter-spacing: -0.01em; line-height: 0.95; }
+.head-sub   { font-size: 8.5pt; font-weight: 500; margin-top: 1mm; }
+.head-r { text-align: right; font-size: 8pt; line-height: 1.5; flex: none; white-space: nowrap; }
+.head-r .big { font-size: 9.5pt; font-weight: 600; white-space: nowrap; }
+.head-qr { width: 11mm; height: 11mm; margin-left: 3mm; }
+.head-qr svg, .head-qr img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+/* ---------- LEGEND ---------- */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 2mm 5mm; align-items: center;
+  border-bottom: var(--pen-thin);
+  padding: 2.4mm 0;
+  font-size: 7.5pt;
+}
+.legend .lt { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 7pt; }
+.legend .k { display: flex; align-items: center; gap: 1.6mm; }
+.legend .kb {
+  width: 4.6mm; height: 4.6mm; border: 0.45mm solid var(--ink);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8pt; font-weight: 700; line-height: 1;
+}
+.legend .kl { font-weight: 600; }
+
+/* ---------- ROWS ---------- */
+.rows { display: flex; flex-direction: column; flex: 1; }
+
+.row {
+  border-bottom: var(--pen);
+  padding: 2.6mm 0 2.8mm;
+  break-inside: avoid;
+}
+.row-top { display: flex; align-items: flex-start; gap: 3.5mm; }
+
+/* rail: QR with the human code stacked beneath it (compact) */
+.rail { display: flex; flex-direction: column; align-items: center; width: 12mm; flex: none; gap: 1mm; }
+.rail .qr { width: 11mm; height: 11mm; }
+.rail .qr svg, .rail .qr img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+.rail .code { font-size: 6.6pt; font-weight: 600; letter-spacing: 0.02em; }
+
+/* action text — the main thing both you and the camera read */
+.act-wrap { flex: 1; min-width: 0; }
+.act { font-size: 12pt; font-weight: 500; line-height: 1.28; text-wrap: pretty; }
+.act .strike-space { display: block; height: 0; }
+
+/* gutter: labelled action boxes on the right */
+.gut { display: flex; gap: 2mm; flex: none; align-items: flex-start; }
+.cell { display: flex; flex-direction: column; align-items: center; gap: 1mm; }
+.cell .box { width: 6.4mm; height: 6.4mm; border: var(--pen-box); }
+.cell .gl  { font-size: 8pt; font-weight: 700; line-height: 1; }
+.cell .cl  { font-size: 6pt; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; text-align: center; }
+
+/* defer group: one heading over three small boxes (1w/1m/1q) */
+.defer { display: flex; flex-direction: column; align-items: center; gap: 1mm; padding: 0 1mm; border-left: var(--pen-thin); border-right: var(--pen-thin); }
+.defer .dh { font-size: 6pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.defer .trio { display: flex; gap: 1.4mm; }
+.defer .dcell { display: flex; flex-direction: column; align-items: center; gap: 0.6mm; }
+.defer .dcell .box { width: 5mm; height: 5mm; border: var(--pen-box); }
+.defer .dcell .cl { font-size: 5.6pt; font-weight: 600; text-transform: uppercase; }
+
+/* fields line: current value -> blank write-in slot */
+.fields { display: flex; flex-wrap: wrap; gap: 1.8mm 4mm; align-items: center; margin-top: 2mm; padding-left: 15.5mm; }
+.fld { display: flex; align-items: center; gap: 1.4mm; font-size: 8pt; }
+.fld .fl  { text-transform: uppercase; font-size: 6.4pt; letter-spacing: 0.05em; font-weight: 700; }
+.fld .cur { font-weight: 600; }
+.fld .cur.tag { border: 0.4mm solid var(--ink); padding: 0.2mm 1.4mm; font-family: 'IBM Plex Mono', monospace; font-size: 7pt; }
+.fld .arr { font-weight: 700; font-size: 8pt; }
+.fld .slot { border: var(--pen-box); height: 5mm; }
+.fld .slot.n { width: 6mm; }
+.fld .slot.s { width: 14mm; }
+.fld .slot.m { width: 26mm; }
+.fld .slot.l { width: 38mm; }
+.fld .slot.to { width: 42mm; height: 7mm; }   /* names need room to write */
+.fld.prominent .fl { font-size: 7pt; }
+.fld.prominent .cur { font-size: 10pt; }
+
+/* inbox capture: numbered blank lines for new freeform items */
+.capture { margin-top: 4mm; }
+.capture .ct { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2.5mm; }
+.cap-line { display: flex; align-items: flex-end; gap: 3mm; height: 11mm; border-bottom: var(--pen-thin); padding-bottom: 1mm; }
+.cap-line .cn { font-size: 7pt; font-weight: 600; font-family: 'IBM Plex Mono', monospace; align-self: flex-start; margin-top: 1mm; }
+.cap-line .cbx { width: 5mm; height: 5mm; border: var(--pen-box); flex: none; align-self: flex-start; margin-top: 0.5mm; }
+
+/* tickler subsection band */
+.band {
+  display: flex; align-items: baseline; gap: 3mm;
+  background: var(--ink); color: var(--paper);
+  padding: 1.8mm 3mm; margin-top: 2mm;
+}
+.band .bt { font-size: 10pt; font-weight: 700; letter-spacing: 0.02em; }
+.band .bs { font-size: 7pt; font-weight: 500; }
+.band .bc { margin-left: auto; font-size: 7.5pt; font-family: 'IBM Plex Mono', monospace; }
+
+/* ---------- FOOTER ----------
+   In-flow at the end of the page. .rows (flex:1) expands on short pages
+   to push the footer to the bottom; on long pages it sits after content. */
+.foot {
+  margin-top: 8mm;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 6.6pt; color: var(--ink); border-top: var(--pen-thin); padding-top: 1.4mm;
+}
+.foot .mono { font-size: 6.6pt; }
+.foot .cont { font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* empty-state note */
+.empty { font-size: 9pt; font-style: italic; padding: 6mm 0; }

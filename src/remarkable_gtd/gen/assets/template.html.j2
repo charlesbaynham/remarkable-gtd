@@ -1,0 +1,165 @@
+{#- ============================================================
+    GTD reMarkable Sheet — Jinja2 template (Playwright/Chromium)
+    Renders ONE tall, auto-height page per bucket — exactly the
+    layout approved in the HTML preview (same gtd.css). generate.py
+    renders one bucket at a time, measures its height, and emits a
+    PDF page cut to fit. `qr(text)` is a Jinja global -> PNG data-URI.
+    data-roi attributes are additive only — no CSS or visual change.
+    ============================================================ -#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>GTD — {{ date_long }}</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="gtd.css" />
+</head>
+<body>
+
+{#- ---------- reusable macros (mirror gtd-render.js) ---------- -#}
+{% macro cell(tid, verb, gl, label) -%}
+<div class="cell"><div class="box" data-roi="{{ tid }}:{{ verb }}"></div><div class="gl">{{ gl }}</div><div class="cl">{{ label }}</div></div>
+{%- endmacro %}
+
+{% macro defer(tid, stem, heading) -%}
+<div class="defer">
+  <div class="dh">{{ heading }}</div>
+  <div class="trio">
+    <div class="dcell"><div class="box" data-roi="{{ tid }}:{{ stem }}_1w"></div><div class="cl">1w</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ tid }}:{{ stem }}_1m"></div><div class="cl">1m</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ tid }}:{{ stem }}_1q"></div><div class="cl">1q</div></div>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro gutter(cat, tid) -%}
+<div class="gut">
+{%- if cat == 'inbox' -%}
+  {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}
+{%- elif cat == 'delegated' -%}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_me', '↩', 'To me') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+{%- elif cat == 'tickler' -%}
+  {{ cell(tid, 'activate', '→', 'Now') }}{{ cell(tid, 'done', '✓', 'Done') }}{{ defer(tid, 'redefer', 'Re-defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+{%- else -%}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+{%- endif -%}
+</div>
+{%- endmacro %}
+
+{% macro fld_cur(tid, label, cur, slot_cls, slot_name, tag=False) -%}
+<span class="fld"><span class="fl">{{ label }}</span><span class="cur{{ ' tag' if tag }}">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot_cls }}" data-roi="{{ tid }}:slot_{{ slot_name }}"></span></span>
+{%- endmacro %}
+
+{% macro fld_blank(tid, label, slot_cls, slot_name) -%}
+<span class="fld"><span class="fl">{{ label }}</span><span class="slot {{ slot_cls }}" data-roi="{{ tid }}:slot_{{ slot_name }}"></span></span>
+{%- endmacro %}
+
+{% macro fld_prom(tid, label, cur, slot_cls, slot_name) -%}
+<span class="fld prominent"><span class="fl">{{ label }}</span><span class="cur">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot_cls }}" data-roi="{{ tid }}:slot_{{ slot_name }}"></span></span>
+{%- endmacro %}
+
+{% macro fields(cat, t) -%}
+{%- if cat == 'inbox' -%}
+<div class="fields">{{ fld_blank(t.id, 'Priority', 'n', 'priority') }}{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_blank(t.id, 'Project', 'm', 'project') }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
+{%- elif cat == 'delegated' -%}
+<div class="fields">{{ fld_prom(t.id, 'To', t.to, 'to', 'to') }}{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_cur(t.id, 'Project', t.proj, 'm', 'project', true) }}</div>
+{%- elif cat == 'tickler' -%}
+{#- no metadata -#}
+{%- else -%}
+<div class="fields">{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_cur(t.id, 'Project', t.proj, 'm', 'project', true) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro row(cat, t) -%}
+<div class="row">
+  <div class="row-top">
+    <div class="rail">
+      <span class="qr" data-roi="{{ t.id }}:qr"><img src="{{ qr(t.id) }}" alt="{{ t.id }}" /></span>
+      <span class="code mono">{{ t.id }}</span>
+    </div>
+    <div class="act-wrap"><div class="act" data-roi="{{ t.id }}:act">{{ t.act }}</div></div>
+    {{ gutter(cat, t.id) }}
+  </div>
+  {{ fields(cat, t) }}
+</div>
+{%- endmacro %}
+
+{% macro legend(cat) -%}
+<div class="legend"><span class="lt">Tick to</span>
+{%- if cat == 'inbox' -%}
+  <span class="k"><span class="kb">→</span><span class="kl">to Next Actions</span></span>
+  <span class="k"><span class="kb">→</span><span class="kl">to Delegated</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">Defer to Tickler</span></span>
+  <span class="k"><span class="kb">✗</span><span class="kl">Drop</span></span>
+{%- elif cat == 'delegated' -%}
+  <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
+  <span class="k"><span class="kb">↩</span><span class="kl">Back to me</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">Defer 1w/1m/1q</span></span>
+  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+{%- elif cat == 'tickler' -%}
+  <span class="k"><span class="kb">→</span><span class="kl">Activate now</span></span>
+  <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">Re-defer</span></span>
+  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+{%- else -%}
+  <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
+  <span class="k"><span class="kb">→</span><span class="kl">Delegate</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">Defer 1w/1m/1q</span></span>
+  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+{%- endif -%}
+</div>
+{%- endmacro %}
+
+{#- ---------- one bucket = one tall page ---------- -#}
+{% for b in buckets %}
+<section class="page" data-bucket="{{ b.key }}">
+  <div class="reg tl" data-roi="reg:tl"></div><div class="reg tr" data-roi="reg:tr"></div><div class="reg bl" data-roi="reg:bl"></div><div class="reg br" data-roi="reg:br"></div>
+
+  <div class="head">
+    <div class="head-l">
+      <div class="head-tag">{{ b.tag }}</div>
+      <div>
+        <div class="head-title">{{ b.title }}</div>
+        <div class="head-sub">{{ b.sub }}</div>
+      </div>
+    </div>
+    <div class="head-r">
+      <div class="big">{{ date_long }}</div>
+      <div class="mono">{{ b.count_label }}</div>
+      <div style="display:flex;justify-content:flex-end"><span class="head-qr" data-roi="page:qr"><img src="{{ qr('GTD|' ~ b.key ~ '|' ~ date_stamp) }}" alt="page code" /></span></div>
+    </div>
+  </div>
+
+  {{ legend(b.key) }}
+
+  <div class="rows">
+    {% if b.kind == 'sectioned' %}
+      {% for sec in b.sections %}
+      <div class="band"><span class="bt">{{ sec.title }}</span><span class="bs">{{ sec.sub }}</span><span class="bc mono">{{ sec['items']|length }}</span></div>
+        {% for t in sec['items'] %}{{ row(b.key, t) }}{% endfor %}
+        {% if not sec['items'] %}<div class="empty">Nothing parked here.</div>{% endif %}
+      {% endfor %}
+    {% else %}
+      {% for t in b['items'] %}{{ row(b.key, t) }}{% endfor %}
+      {% if not b['items'] %}<div class="empty">Empty — nothing to show.</div>{% endif %}
+    {% endif %}
+
+    {% if b.capture %}
+    <div class="capture">
+      <div class="ct">+ Capture — write new items here</div>
+      {% for i in range(1, b.capture + 1) %}
+      <div class="cap-line" data-roi="capture:N{{ i }}:line"><span class="cn">N{{ i }}</span><span class="cbx" data-roi="capture:N{{ i }}:box"></span></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="foot">
+    <span class="mono">{{ b.title }} · {{ date_stamp }}</span>
+    <span class="mono">{{ b.page_no }} / {{ total_pages }}</span>
+  </div>
+</section>
+{% endfor %}
+
+</body>
+</html>
