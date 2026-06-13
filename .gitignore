@@ -1,12 +1,20 @@
+tasks.json
+.env
+secrets
+
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 .venv/
 venv/
 build/
 dist/
 .pytest_cache/
-# generated output (keep test fixtures)
-/*.pdf
-/*.manifest.json
+*.manifest.json
+*-inbox.html
+*-next.html
+*-delegated.html
+*-tickler.html
 debug*.html
+.direnv

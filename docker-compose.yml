@@ -1,0 +1,26 @@
+services:
+  gtd:
+    build: .
+    env_file: .env
+    environment:
+      - GTD_URL
+      - GTD_GIT_BRANCH
+      - REMARKABLE_FOLDER
+      - GIT_USER_NAME
+      - GIT_USER_EMAIL
+      - GIT_TOKEN
+      - RMAPI_DEVICE_TOKEN
+      - RMAPI_USER_TOKEN
+      - PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+    volumes:
+      - gtd-output:/data/output
+    # Uncomment if your GTD repo uses SSH key auth instead of GIT_TOKEN:
+    # secrets:
+    #   - ssh_private_key
+
+# secrets:
+#   ssh_private_key:
+#     file: ./secrets/ssh_private_key
+
+volumes:
+  gtd-output:
