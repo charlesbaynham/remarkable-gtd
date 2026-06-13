@@ -1,0 +1,54 @@
+{
+  "date": "2026-05-30",
+
+  "inbox": [
+    { "act": "Reply to reviewer 2 about the variance estimator — they want a proof sketch" },
+    { "act": "Sarah asked for a reference letter, deadline unclear — chase her for the date" },
+    { "act": "Book flights + accommodation for NeurIPS workshop in December" },
+    { "act": "Idea: extend the continuum model to the multi-agent case — write up half a page" },
+    { "act": "Department wants my teaching preferences for next year by some point" },
+    { "act": "Renew the GPU cluster allocation before it lapses" },
+    { "act": "Coffee chat with the new postdoc candidate — schedule it" }
+  ],
+
+  "next": [
+    { "id": "NA-01", "pri": 7, "due": "30 May", "proj": "epsrc",         "act": "Give Oliver final copy of EPSRC proposal" },
+    { "id": "NA-02", "pri": 7, "due": "2 Jun",  "proj": "erc-starter",   "act": "Submit placeholder EOIs for both ERC Starter and URF" },
+    { "id": "NA-03", "pri": 6, "due": "3 Jun",  "proj": "epsrc",         "act": "Draft the impact statement section and send to Priya for comments" },
+    { "id": "NA-04", "pri": 6, "due": "4 Jun",  "proj": "epsrc",         "act": "Finalise the budget spreadsheet — confirm RA salary scale with finance" },
+    { "id": "NA-05", "pri": 5, "due": "6 Jun",  "proj": "dai-continuum", "act": "Reproduce Oliver's plots and package up code for the MLE paper — quick!" },
+    { "id": "NA-06", "pri": 5, "due": "9 Jun",  "proj": "service",       "act": "Write referee report for JMLR submission #2241" },
+    { "id": "NA-07", "pri": 4, "due": "2 Jun",  "proj": "teaching",      "act": "Prepare slides for the Tuesday group meeting on diffusion samplers" },
+    { "id": "NA-08", "pri": 4, "due": "10 Jun", "proj": "hiring",        "act": "Read and annotate the three candidate PhD applications" },
+    { "id": "NA-09", "pri": 3, "due": "15 Jun", "proj": "admin",         "act": "Update personal website with the two new preprints" },
+    { "id": "NA-10", "pri": 3, "due": "12 Jun", "proj": "dai-continuum", "act": "Sketch the experiment design for the ablation study" },
+    { "id": "NA-11", "pri": 2, "due": "18 Jun", "proj": "survey",        "act": "Set up the shared Overleaf for the survey paper with collaborators" },
+    { "id": "NA-12", "pri": 2, "due": "20 Jun", "proj": "admin",         "act": "Order the standing desk and second monitor for the new office" }
+  ],
+
+  "delegated": [
+    { "id": "DG-01", "pri": 7, "due": "1 Jun",  "proj": "dai-continuum", "to": "Oliver",      "act": "Run the full sweep on the cluster and report wall-clock + memory" },
+    { "id": "DG-02", "pri": 6, "due": "7 Jun",  "proj": "survey",        "to": "Priya",       "act": "Clean and release the benchmark dataset with a datasheet" },
+    { "id": "DG-03", "pri": 5, "due": "5 Jun",  "proj": "user-study",    "to": "Tom",         "act": "Collect signed consent forms from all study participants" },
+    { "id": "DG-04", "pri": 4, "due": "14 Jun", "proj": "survey",        "to": "Mei",         "act": "Draft the related-work section for the survey" },
+    { "id": "DG-05", "pri": 3, "due": "11 Jun", "proj": "dai-continuum", "to": "Oliver",      "act": "Set up CI for the open-source repo and add the test matrix" },
+    { "id": "DG-06", "pri": 3, "due": "9 Jun",  "proj": "service",       "to": "Admin office","act": "Chase the journal about the status of the revision" }
+  ],
+
+  "tickler": {
+    "week": [
+      { "act": "Check whether the conference released the camera-ready instructions" },
+      { "act": "Follow up with Tom if consent forms still not in" },
+      { "act": "Revisit the multi-agent idea once the deadline passes" }
+    ],
+    "month": [
+      { "act": "Start thinking about the summer internship hosting logistics" },
+      { "act": "Review whether the GPU allocation is being used efficiently" },
+      { "act": "Decide on sabbatical timing and mention to the head of department" }
+    ],
+    "quarter": [
+      { "act": "Reassess the survey paper scope — is it still timely?" },
+      { "act": "Plan the next round of PhD recruitment" }
+    ]
+  }
+}

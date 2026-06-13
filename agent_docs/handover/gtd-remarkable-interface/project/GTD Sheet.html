@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GTD Sheet — reMarkable 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="gtd.css" />
+<script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js" crossorigin="anonymous"></script>
+<style>
+  /* ---- screen-only chrome (not part of the PDF) ---- */
+  body.screen { background: #c9c6bf; padding: 0; }
+  .toolbar {
+    position: sticky; top: 0; z-index: 50;
+    background: #1b1b1a; color: #f3f1ec;
+    display: flex; align-items: center; gap: 16px;
+    padding: 11px 20px; font-family: 'IBM Plex Sans', sans-serif;
+    border-bottom: 1px solid #000;
+  }
+  .toolbar .tt { font-weight: 700; font-size: 14px; letter-spacing: -0.01em; }
+  .toolbar .td { font-size: 12px; color: #b7b3aa; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .jump { display: flex; gap: 6px; }
+  .toolbar .jump button {
+    font: inherit; font-size: 11px; font-weight: 600;
+    background: #2e2e2c; color: #f3f1ec; border: 1px solid #4a4a46;
+    padding: 5px 10px; border-radius: 5px; cursor: pointer;
+  }
+  .toolbar .jump button:hover { background: #3c3c39; }
+  .stack {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 22px; padding: 28px 16px 60px;
+  }
+  .page {
+    box-shadow: 0 2px 18px rgba(0,0,0,0.28);
+    scroll-margin-top: 70px;
+  }
+  @media print {
+    body.screen { background: #fff; }
+    .toolbar { display: none; }
+    .stack { gap: 0; padding: 0; }
+    .page { box-shadow: none; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+  }
+</style>
+</head>
+<body class="screen">
+  <div class="toolbar">
+    <span class="tt">GTD Sheet</span>
+    <span class="td">reMarkable 2 · 157.8 mm wide · one page per bucket, as tall as it needs · black-on-white for e-ink + vision</span>
+    <span class="spacer"></span>
+    <span class="jump" id="jump"></span>
+  </div>
+  <div class="stack" id="doc"></div>
+
+  <script src="gtd-data.js"></script>
+  <script src="gtd-render.js"></script>
+  <script>
+    // build jump links once pages exist
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const jump = document.getElementById('jump');
+        const seen = new Set();
+        document.querySelectorAll('.page').forEach((p, i) => {
+          const label = (p.dataset.screenLabel || '').replace(' cont', '');
+          if (seen.has(label)) return;
+          seen.add(label);
+          const b = document.createElement('button');
+          b.textContent = label;
+          b.onclick = () => { window.scrollTo({ top: p.offsetTop - 60, behavior: 'smooth' }); };
+          jump.appendChild(b);
+        });
+      }, 250);
+    });
+  </script>
+
+  <template id="__bundler_thumbnail">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100" height="100" fill="#1b1b1a"/>
+      <rect x="30" y="22" width="40" height="56" rx="2" fill="#fff"/>
+      <rect x="35" y="30" width="22" height="3" fill="#1b1b1a"/>
+      <rect x="35" y="38" width="30" height="2" fill="#1b1b1a"/>
+      <rect x="35" y="44" width="26" height="2" fill="#1b1b1a"/>
+      <rect x="35" y="54" width="30" height="2" fill="#1b1b1a"/>
+      <rect x="35" y="60" width="22" height="2" fill="#1b1b1a"/>
+      <rect x="60" y="51" width="5" height="5" fill="none" stroke="#1b1b1a" stroke-width="1.2"/>
+    </svg>
+  </template>
+</body>
+</html>
