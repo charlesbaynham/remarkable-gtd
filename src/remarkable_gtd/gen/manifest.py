@@ -1,5 +1,4 @@
-"""Manifest export — collects data-roi regions and writes the sidecar JSON."""
-
+"""Layout manifest: collect data-roi bounding rects from Chromium page and write JSON sidecar."""
 from __future__ import annotations
 
 import json
@@ -8,72 +7,70 @@ from pathlib import Path
 
 from remarkable_gtd.common.schema import MANIFEST_SCHEMA
 
-# ---------------------------------------------------------------------------
-# JavaScript: walk [data-roi] and return normalised rects relative to .page
-# ---------------------------------------------------------------------------
-_COLLECT_ROIS_JS = """
-(() => {
+
+_COLLECT_JS = """
+() => {
     const page = document.querySelector('.page');
     if (!page) return {};
-    const pageRect = page.getBoundingClientRect();
-    const pw = pageRect.width;
-    const ph = pageRect.height;
-    const out = {};
-    for (const el of document.querySelectorAll('[data-roi]')) {
+    const pr = page.getBoundingClientRect();
+    const result = {};
+    document.querySelectorAll('[data-roi]').forEach(el => {
         const key = el.getAttribute('data-roi');
-        if (!key) continue;
         const r = el.getBoundingClientRect();
-        out[key] = {
-            x: (r.left - pageRect.left) / pw,
-            y: (r.top - pageRect.top) / ph,
-            w: r.width / pw,
-            h: r.height / ph,
+        result[key] = {
+            x: (r.left - pr.left) / pr.width,
+            y: (r.top  - pr.top)  / pr.height,
+            w: r.width  / pr.width,
+            h: r.height / pr.height,
         };
-    }
-    return out;
-})()
+    });
+    return result;
+}
 """
 
 
 def collect_rois(page) -> dict:
-    """Calls page.evaluate(JS) to gather normalized rects for all [data-roi]."""
-    return page.evaluate(_COLLECT_ROIS_JS)
+    """Evaluate JS in a live Playwright page to gather normalized ROI rects.
+
+    Each rect is expressed as fractions relative to the ``.page`` element
+    (values in 0..1 for elements fully inside the page).
+
+    Args:
+        page: A Playwright ``Page`` object with the bucket HTML loaded.
+
+    Returns:
+        dict mapping ``data-roi`` key strings to ``{x, y, w, h}`` dicts.
+    """
+    return page.evaluate(_COLLECT_JS)
 
 
 def write_manifest(
-    pages_info: list[dict],
+    buckets_rois: list[dict],
     the_date: date,
     page_w_mm: float,
     out_path: Path,
 ) -> None:
-    """Writes the manifest JSON (schema gtd.manifest/1).
+    """Write the manifest JSON sidecar file.
 
-    *pages_info* is a list of page dicts, one per page, in page order.
-    Each dict must have keys:
-        - ``bucket`` (str): bucket key, e.g. "inbox", "next", …
-        - ``page_no`` (int): 1-based page number
-        - ``w_px`` (int): rendered page width in pixels
-        - ``h_px`` (int): rendered page height in pixels
-        - ``rois`` (dict): maps ``data-roi`` value -> ``{"x": f, "y": f, "w": f, "h": f}``
+    Args:
+        buckets_rois: List of per-bucket dicts with keys:
+            ``key``, ``bucket``, ``page_no``, ``render`` (w_px/h_px), ``rois``.
+        the_date: The sheet date (used as the top-level ``date`` field).
+        page_w_mm: Physical page width in mm (157.8 for reMarkable 2).
+        out_path: Destination path for the JSON file.
     """
-    pages = {}
-    for info in pages_info:
-        bucket = info["bucket"]
-        page_no = info["page_no"]
-        page_key = f"GTD|{bucket}|{the_date.isoformat()}"
-        pages[page_key] = {
-            "bucket": bucket,
-            "page_no": page_no,
-            "render": {
-                "w_px": info["w_px"],
-                "h_px": info["h_px"],
-            },
-            "rois": info["rois"],
+    pages: dict = {}
+    for entry in buckets_rois:
+        pages[entry["key"]] = {
+            "bucket": entry["bucket"],
+            "page_no": entry["page_no"],
+            "render": entry["render"],
+            "rois": entry["rois"],
         }
 
     manifest = {
         "schema": MANIFEST_SCHEMA,
-        "date": the_date.isoformat(),
+        "date": the_date.strftime("%Y-%m-%d"),
         "page_w_mm": page_w_mm,
         "pages": pages,
     }

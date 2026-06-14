@@ -1,57 +1,68 @@
-"""Tests for QR decoding."""
-
+"""Unit tests for QR decoding helpers."""
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from remarkable_gtd.scan.qr import decode_region, get_backend
+from remarkable_gtd.scan.qr import OpenCVBackend, PyzbarBackend, decode_region, get_backend
 
 
-def test_decode_region_synthesized():
-    """Test decode_region on a synthesized QR image."""
+def make_qr_image(text: str, canvas: tuple[int, int] = (400, 400),
+                  pos: tuple[int, int] = (150, 150)) -> np.ndarray:
+    """White canvas with one QR code pasted at a known location.
+
+    The QR is pasted at its natural rendered size (crisp module edges) —
+    no lossy resize, so both backends should read it.
+
+    Returns:
+        (canvas_img, size): the image and the pasted QR's pixel size.
+    """
     import qrcode
 
-    qr = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=4, border=1
-    )
-    qr.add_data("TEST-QR-123")
+    qr = qrcode.QRCode(border=2, box_size=4)
+    qr.add_data(text)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
-    arr = np.array(img)
+    img = qr.make_image(fill_color="black", back_color="white").convert("L")
+    arr = np.asarray(img)
+    size = arr.shape[0]
 
-    roi = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
-    result = decode_region(arr, roi, (arr.shape[1], arr.shape[0]))
-    assert result == "TEST-QR-123"
+    canvas_img = np.full(canvas, 255, dtype=np.uint8)
+    x, y = pos
+    canvas_img[y:y + size, x:x + size] = arr
+    return canvas_img, size
 
 
-def test_example_pdf_qr():
-    """Rasterize example.pdf and try to find QR codes. Skip if none found."""
-    from pathlib import Path
+def test_decode_region_finds_qr():
+    img, size = make_qr_image("NA-05")
+    roi = {"x": 150 / 400, "y": 150 / 400, "w": size / 400, "h": size / 400}
+    assert decode_region(img, roi, (400, 400)) == "NA-05"
 
-    import fitz
 
-    pdf_path = Path(__file__).with_name("fixtures") / "example.pdf"
-    if not pdf_path.exists():
-        pytest.skip("example.pdf not found")
+def test_decode_region_empty_area():
+    img = np.full((400, 400), 255, dtype=np.uint8)
+    roi = {"x": 0.25, "y": 0.25, "w": 0.25, "h": 0.25}
+    assert decode_region(img, roi, (400, 400)) is None
 
-    doc = fitz.open(str(pdf_path))
-    found_any = False
-    for i in range(doc.page_count):
-        page = doc.load_page(i)
-        pix = page.get_pixmap(dpi=226)
-        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
-            pix.height, pix.width, pix.n
-        )
-        if img.shape[2] == 4:
-            img = img[:, :, :3]
 
-        backend = get_backend("auto")
-        results = backend.decode_all(img)
-        if results:
-            found_any = True
-            break
-    doc.close()
+def test_opencv_backend_decode_all():
+    img, _ = make_qr_image("GTD|next|2026-05-30")
+    results = OpenCVBackend().decode_all(img)
+    texts = [t for t, _ in results]
+    assert "GTD|next|2026-05-30" in texts
 
-    if not found_any:
-        pytest.skip("No QR codes found in example.pdf (expected for tiny demo)")
+
+def test_pyzbar_backend_if_available():
+    try:
+        from pyzbar import pyzbar  # noqa: F401
+    except Exception:
+        pytest.skip("pyzbar/zbar not available")
+    img, _ = make_qr_image("DG-01")
+    results = PyzbarBackend().decode_all(img)
+    texts = [t for t, _ in results]
+    assert "DG-01" in texts
+
+
+def test_get_backend_names():
+    assert isinstance(get_backend("opencv"), OpenCVBackend)
+    assert isinstance(get_backend("pyzbar"), PyzbarBackend)
+    assert get_backend("auto") is not None

@@ -1,112 +1,129 @@
-"""Unit tests for decision resolution."""
-
+"""Unit tests for the decision resolver (pure logic, no images)."""
 from __future__ import annotations
 
+from remarkable_gtd.common.schema import DECISIONS_SCHEMA
 from remarkable_gtd.scan.decisions import build_decisions, resolve_task
 
 
-def test_resolve_task_done_wins_over_defer():
-    """If both done and defer_1m are ticked, done wins and a warning is added."""
-    ticks = {
-        "done": (0.15, True),
-        "to_deleg": (0.0, False),
-        "defer_1w": (0.0, False),
-        "defer_1m": (0.12, True),
-        "defer_1q": (0.0, False),
-        "edit": (0.0, False),
-    }
-    result = resolve_task("NA-01", ticks, "next", {}, edited=False)
-    assert result["action"] == "done"
-    assert any("takes precedence" in w for w in result["warnings"])
+def ticks(**kw) -> dict:
+    """Build a ticks dict: inked verbs get fill 0.3, others 0.0."""
+    base = {}
+    for verb, inked in kw.items():
+        base[verb] = (0.3 if inked else 0.005, bool(inked))
+    return base
 
 
-def test_resolve_task_precedence_done_over_activate():
-    """done > activate for tickler (done has higher precedence)."""
-    ticks = {
-        "activate": (0.15, True),
-        "done": (0.10, True),
-        "redefer_1w": (0.0, False),
-        "redefer_1m": (0.0, False),
-        "redefer_1q": (0.0, False),
-        "edit": (0.0, False),
-    }
-    result = resolve_task("TK-01", ticks, "tickler", {}, edited=False)
-    assert result["action"] == "done"
-
-
-def test_resolve_task_none_ticked():
-    """No ticks → action is 'none'."""
-    ticks = {
-        "done": (0.0, False),
-        "to_deleg": (0.0, False),
-        "defer_1w": (0.0, False),
-        "defer_1m": (0.0, False),
-        "defer_1q": (0.0, False),
-        "edit": (0.0, False),
-    }
-    result = resolve_task("NA-01", ticks, "next", {}, edited=False)
-    assert result["action"] == "none"
-    assert result["edited"] is False
-
-
-def test_resolve_task_edited_flag():
-    """edit ticked → edited=True."""
-    ticks = {
-        "done": (0.0, False),
-        "to_deleg": (0.0, False),
-        "defer_1w": (0.0, False),
-        "defer_1m": (0.0, False),
-        "defer_1q": (0.0, False),
-        "edit": (0.08, True),
-    }
-    result = resolve_task("NA-01", ticks, "next", {}, edited=False)
-    assert result["edited"] is True
-
-
-def test_resolve_task_field_texts_edited():
-    """Field texts present → edited=True even without edit tick."""
-    ticks = {
-        "done": (0.0, False),
-        "to_deleg": (0.0, False),
-        "defer_1w": (0.0, False),
-        "defer_1m": (0.0, False),
-        "defer_1q": (0.0, False),
-        "edit": (0.0, False),
-    }
-    fields = {"priority": {"text": "7", "ocr_conf": None}}
-    result = resolve_task("NA-01", ticks, "next", fields, edited=False)
-    assert result["edited"] is True
-
-
-def test_resolve_task_conflict_warning():
-    """Multiple non-defer actions ticked → conflict warning."""
-    ticks = {
-        "done": (0.15, True),
-        "to_deleg": (0.12, True),
-        "defer_1w": (0.0, False),
-        "defer_1m": (0.0, False),
-        "defer_1q": (0.0, False),
-        "edit": (0.0, False),
-    }
-    result = resolve_task("NA-01", ticks, "next", {}, edited=False)
-    assert result["action"] == "done"
-    assert any("Multiple actions" in w for w in result["warnings"])
-
-
-def test_build_decisions_structure():
-    """build_decisions returns correct schema."""
-    result = build_decisions(
-        bucket="next",
-        task_results=[],
-        captures=[],
-        rectify_meta={"residual_px": 0.5, "reg_marks_found": {}},
-        header_qr="GTD|next|2026-05-30",
-        source_image="/tmp/test.png",
-        manifest_path="/tmp/test.manifest.json",
-        the_date="2026-05-30",
+def test_single_done():
+    entry, warnings = resolve_task(
+        "NA-01",
+        ticks(done=True, to_deleg=False, defer_1w=False, defer_1m=False,
+              defer_1q=False, edit=False),
+        "next",
     )
-    assert result["schema"] == "gtd.decisions/1"
-    assert result["bucket"] == "next"
-    assert result["header_qr"] == "GTD|next|2026-05-30"
-    assert "tasks" in result
-    assert "captures" in result
+    assert entry["action"] == "done"
+    assert entry["edited"] is False
+    assert "defer_period" not in entry
+    assert warnings == []
+
+
+def test_no_marks_is_none():
+    entry, warnings = resolve_task(
+        "NA-01",
+        ticks(done=False, to_deleg=False, defer_1w=False, defer_1m=False,
+              defer_1q=False, edit=False),
+        "next",
+    )
+    assert entry["action"] == "none"
+    assert warnings == []
+
+
+def test_defer_selects_period():
+    entry, _ = resolve_task(
+        "NA-01",
+        ticks(done=False, to_deleg=False, defer_1w=False, defer_1m=True,
+              defer_1q=False, edit=False),
+        "next",
+    )
+    assert entry["action"] == "defer"
+    assert entry["defer_period"] == "1m"
+
+
+def test_tickler_redefer():
+    entry, _ = resolve_task(
+        "TK-01",
+        ticks(activate=False, done=False, redefer_1w=False, redefer_1m=False,
+              redefer_1q=True, edit=False),
+        "tickler",
+    )
+    assert entry["action"] == "defer"
+    assert entry["defer_period"] == "1q"
+
+
+def test_done_beats_defer_with_warning():
+    entry, warnings = resolve_task(
+        "NA-01",
+        ticks(done=True, to_deleg=False, defer_1w=True, defer_1m=False,
+              defer_1q=False, edit=False),
+        "next",
+    )
+    assert entry["action"] == "done"
+    assert len(warnings) == 1
+    assert "precedence" in warnings[0]
+
+
+def test_edit_is_orthogonal():
+    entry, warnings = resolve_task(
+        "DG-01",
+        ticks(done=True, to_me=False, defer_1w=False, defer_1m=False,
+              defer_1q=False, edit=True),
+        "delegated",
+    )
+    assert entry["action"] == "done"
+    assert entry["edited"] is True
+    # edit must not produce a multi-action conflict warning
+    assert warnings == []
+
+
+def test_inbox_routing():
+    entry, _ = resolve_task(
+        "IN-01",
+        ticks(to_next=True, to_deleg=False, defer_1w=False, defer_1m=False,
+              defer_1q=False, drop=False),
+        "inbox",
+    )
+    assert entry["action"] == "to_next"
+
+
+def test_multiple_defer_boxes_warns():
+    entry, warnings = resolve_task(
+        "NA-01",
+        ticks(done=False, to_deleg=False, defer_1w=True, defer_1m=True,
+              defer_1q=False, edit=False),
+        "next",
+    )
+    assert entry["action"] == "defer"
+    assert any("multiple defer" in w for w in warnings)
+
+
+def test_fields_and_act_text_passthrough():
+    entry, _ = resolve_task(
+        "NA-01",
+        ticks(done=False, to_deleg=False, edit=True),
+        "next",
+        field_texts={"due": {"text": "6 Jun", "fill": 0.1}},
+        act_text="Amended action",
+    )
+    assert entry["fields"]["due"]["text"] == "6 Jun"
+    assert entry["act_text"] == "Amended action"
+
+
+def test_build_decisions_shape():
+    doc = build_decisions(
+        bucket="next", the_date="2026-05-30", header_qr="GTD|next|2026-05-30",
+        tasks=[], captures=[], rectify_meta={"residual_px": 1.0, "reg_marks_found": 4},
+        source_image="scan.png", manifest_path="m.json", warnings=[],
+    )
+    assert doc["schema"] == DECISIONS_SCHEMA
+    for key in ("source_image", "manifest", "bucket", "date", "header_qr",
+                "rectify", "tasks", "captures", "warnings"):
+        assert key in doc

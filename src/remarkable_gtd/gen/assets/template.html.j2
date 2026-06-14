@@ -4,6 +4,7 @@
     layout approved in the HTML preview (same gtd.css). generate.py
     renders one bucket at a time, measures its height, and emits a
     PDF page cut to fit. `qr(text)` is a Jinja global -> PNG data-URI.
+    data-roi attributes are additive only — no CSS or visual change.
     ============================================================ -#}
 <!DOCTYPE html>
 <html lang="en">
@@ -16,56 +17,56 @@
 <body>
 
 {#- ---------- reusable macros (mirror gtd-render.js) ---------- -#}
-{% macro cell(gl, label, task_id, roi_key) -%}
-<div class="cell"><div class="box" data-roi="{{ task_id }}:{{ roi_key }}"></div><div class="gl">{{ gl }}</div><div class="cl">{{ label }}</div></div>
+{% macro cell(tid, verb, gl, label) -%}
+<div class="cell"><div class="box" data-roi="{{ tid }}:{{ verb }}"></div><div class="gl">{{ gl }}</div><div class="cl">{{ label }}</div></div>
 {%- endmacro %}
 
-{% macro defer(heading, task_id, stem='defer') -%}
+{% macro defer(tid, stem, heading) -%}
 <div class="defer">
   <div class="dh">{{ heading }}</div>
   <div class="trio">
-    <div class="dcell"><div class="box" data-roi="{{ task_id }}:{{ stem }}_1w"></div><div class="cl">1w</div></div>
-    <div class="dcell"><div class="box" data-roi="{{ task_id }}:{{ stem }}_1m"></div><div class="cl">1m</div></div>
-    <div class="dcell"><div class="box" data-roi="{{ task_id }}:{{ stem }}_1q"></div><div class="cl">1q</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ tid }}:{{ stem }}_1w"></div><div class="cl">1w</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ tid }}:{{ stem }}_1m"></div><div class="cl">1m</div></div>
+    <div class="dcell"><div class="box" data-roi="{{ tid }}:{{ stem }}_1q"></div><div class="cl">1q</div></div>
   </div>
 </div>
 {%- endmacro %}
 
-{% macro gutter(cat, task_id) -%}
+{% macro gutter(cat, tid) -%}
 <div class="gut">
 {%- if cat == 'inbox' -%}
-  {{ cell('→','Next', task_id, 'to_next') }}{{ cell('→','Deleg', task_id, 'to_deleg') }}{{ defer('Defer', task_id, 'defer') }}{{ cell('✗','Drop', task_id, 'drop') }}
+  {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}
 {%- elif cat == 'delegated' -%}
-  {{ cell('✓','Done', task_id, 'done') }}{{ cell('↩','To me', task_id, 'to_me') }}{{ defer('Defer', task_id, 'defer') }}{{ cell('✎','Edit', task_id, 'edit') }}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_me', '↩', 'To me') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
 {%- elif cat == 'tickler' -%}
-  {{ cell('→','Now', task_id, 'activate') }}{{ cell('✓','Done', task_id, 'done') }}{{ defer('Re-defer', task_id, 'redefer') }}{{ cell('✎','Edit', task_id, 'edit') }}
+  {{ cell(tid, 'activate', '→', 'Now') }}{{ cell(tid, 'done', '✓', 'Done') }}{{ defer(tid, 'redefer', 'Re-defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
 {%- else -%}
-  {{ cell('✓','Done', task_id, 'done') }}{{ cell('→','Deleg', task_id, 'to_deleg') }}{{ defer('Defer', task_id, 'defer') }}{{ cell('✎','Edit', task_id, 'edit') }}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
 {%- endif -%}
 </div>
 {%- endmacro %}
 
-{% macro fld_cur(label, cur, slot, task_id, tag=False) -%}
-<span class="fld"><span class="fl">{{ label }}</span><span class="cur{{ ' tag' if tag }}">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot }}" data-roi="{{ task_id }}:slot_{{ slot }}"></span></span>
+{% macro fld_cur(tid, label, cur, slot_cls, slot_name, tag=False) -%}
+<span class="fld"><span class="fl">{{ label }}</span><span class="cur{{ ' tag' if tag }}">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot_cls }}" data-roi="{{ tid }}:slot_{{ slot_name }}"></span></span>
 {%- endmacro %}
 
-{% macro fld_blank(label, slot, task_id) -%}
-<span class="fld"><span class="fl">{{ label }}</span><span class="slot {{ slot }}" data-roi="{{ task_id }}:slot_{{ slot }}"></span></span>
+{% macro fld_blank(tid, label, slot_cls, slot_name) -%}
+<span class="fld"><span class="fl">{{ label }}</span><span class="slot {{ slot_cls }}" data-roi="{{ tid }}:slot_{{ slot_name }}"></span></span>
 {%- endmacro %}
 
-{% macro fld_prom(label, cur, slot, task_id) -%}
-<span class="fld prominent"><span class="fl">{{ label }}</span><span class="cur">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot }}" data-roi="{{ task_id }}:slot_{{ slot }}"></span></span>
+{% macro fld_prom(tid, label, cur, slot_cls, slot_name) -%}
+<span class="fld prominent"><span class="fl">{{ label }}</span><span class="cur">{{ cur }}</span><span class="arr">→</span><span class="slot {{ slot_cls }}" data-roi="{{ tid }}:slot_{{ slot_name }}"></span></span>
 {%- endmacro %}
 
 {% macro fields(cat, t) -%}
 {%- if cat == 'inbox' -%}
-<div class="fields">{{ fld_blank('Priority','n', t.id) }}{{ fld_blank('Due','s', t.id) }}{{ fld_blank('Project','m', t.id) }}{{ fld_blank('To','to', t.id) }}</div>
+<div class="fields">{{ fld_blank(t.id, 'Priority', 'n', 'priority') }}{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_blank(t.id, 'Project', 'm', 'project') }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
 {%- elif cat == 'delegated' -%}
-<div class="fields">{{ fld_prom('To', t.to, 'to', t.id) }}{{ fld_cur('Priority', t.pri, 'n', t.id) }}{{ fld_cur('Due', t.due, 's', t.id) }}{{ fld_cur('Project', t.proj, 'm', t.id, true) }}</div>
+<div class="fields">{{ fld_prom(t.id, 'To', t.to, 'to', 'to') }}{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_cur(t.id, 'Project', t.proj, 'm', 'project', true) }}</div>
 {%- elif cat == 'tickler' -%}
 {#- no metadata -#}
 {%- else -%}
-<div class="fields">{{ fld_cur('Priority', t.pri, 'n', t.id) }}{{ fld_cur('Due', t.due, 's', t.id) }}{{ fld_cur('Project', t.proj, 'm', t.id, true) }}{{ fld_blank('To','to', t.id) }}</div>
+<div class="fields">{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_cur(t.id, 'Project', t.proj, 'm', 'project', true) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
 {%- endif -%}
 {%- endmacro %}
 

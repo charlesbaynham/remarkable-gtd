@@ -1,49 +1,58 @@
-#!/usr/bin/env python3
-"""gtd-scan CLI entry point."""
-
+"""gtd-scan — CLI entry point for the sheet scanner."""
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
-
-from .manifest_io import list_page_keys, load_manifest
-from .pipeline import ScanConfig, run_scan
 
 
 def main(argv=None) -> int:
+    """Scan a written-on GTD sheet image into a decisions JSON."""
     p = argparse.ArgumentParser(
-        description="Scan a marked GTD sheet and produce decisions JSON."
+        description="Read handwritten marks from a GTD sheet image "
+        "and emit a structured decisions JSON."
     )
-    p.add_argument("image", help="Path to scanned/photographed sheet image.")
-    p.add_argument("--manifest", required=True, help="Path to manifest JSON.")
+    p.add_argument("image", help="Scan image (PNG/JPG, or PDF first page).")
     p.add_argument(
-        "--page", default=None, help="Page key from manifest (auto if only one page)."
-    )
-    p.add_argument(
-        "--ocr", default="null", choices=["null", "tesseract"], help="OCR engine."
+        "--manifest", required=True, metavar="PATH",
+        help="Layout manifest JSON written by gtd-gen alongside the PDF.",
     )
     p.add_argument(
-        "-o", "--output", default="decisions.json", help="Output decisions JSON path."
+        "--page", default=None, metavar="KEY",
+        help="Manifest page key, e.g. 'GTD|next|2026-05-30'. Auto-detected "
+        "from QR codes if omitted (or if the manifest has one page).",
+    )
+    p.add_argument(
+        "--ocr", default="null", choices=["null", "tesseract"],
+        help="OCR engine for handwriting regions (default: null = flag only).",
+    )
+    p.add_argument(
+        "-o", "--out", default=None, metavar="PATH",
+        help="Output decisions JSON path (default: stdout).",
     )
     args = p.parse_args(argv)
 
-    manifest = load_manifest(args.manifest)
+    from remarkable_gtd.scan.manifest_io import load_manifest
+    from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
 
-    page_key = args.page
-    if page_key is None:
-        keys = list_page_keys(manifest)
-        if len(keys) == 1:
-            page_key = keys[0]
-        else:
-            p.error("Manifest has multiple pages; specify --page")
+    manifest = load_manifest(args.manifest)
+    manifest["_path"] = str(args.manifest)
 
     cfg = ScanConfig(ocr_engine=args.ocr)
-    decisions = run_scan(Path(args.image), manifest, cfg, page_key)
+    decisions = run_scan(Path(args.image), manifest, cfg, page_key=args.page)
 
-    out_path = Path(args.output)
-    out_path.write_text(json.dumps(decisions, indent=2), encoding="utf-8")
-    print(f"✓ wrote {out_path}")
+    out_json = json.dumps(decisions, indent=2)
+    if args.out:
+        Path(args.out).write_text(out_json + "\n", encoding="utf-8")
+        n = len(decisions["tasks"])
+        acted = sum(1 for t in decisions["tasks"] if t["action"] != "none")
+        print(
+            f"wrote {args.out}  ({decisions['bucket']}, {n} tasks, "
+            f"{acted} with actions, {len(decisions['warnings'])} warnings)"
+        )
+    else:
+        sys.stdout.write(out_json + "\n")
     return 0
 
 
