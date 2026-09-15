@@ -257,7 +257,7 @@ def render_pdf(
         browser.close()
 
     manifest = build_manifest(buckets_rois, the_date, PAGE_W_MM)
-    tasks = tasks_document(buckets, the_date.strftime("%Y-%m-%d"))
+    tasks = tasks_document(buckets, the_date.strftime("%Y-%m-%d"), data.get("context"))
     if embed_state:
         attach_state(writer, manifest, tasks)
 

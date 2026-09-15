@@ -39,10 +39,15 @@ class RecordingEngine:
 
     def __init__(self):
         self.calls: list[tuple[str, tuple[int, int]]] = []
+        self.interpret_calls: list[tuple[int, int]] = []
 
     def read(self, image, hint=None, context=None):
         self.calls.append((hint, image.shape[:2]))
         return f"<{hint}>"
+
+    def interpret(self, image, task, vocabulary=None, today=None):
+        self.interpret_calls.append(image.shape[:2])
+        return None
 
 
 @pytest.fixture(scope="module")
@@ -72,9 +77,11 @@ def test_every_hand_tick_is_recovered(scanned):
 
 
 def test_edit_flag_stays_off_when_not_ticked(scanned):
-    decisions, _ = scanned
+    decisions, engine = scanned
     edited = [t["id"] for p in decisions["pages"] for t in p["tasks"] if t["edited"]]
     assert edited == []
+    # No row's Edit box is ticked on this sheet, so interpret() is never called.
+    assert engine.interpret_calls == []
 
 
 def test_handwriting_regions_are_the_only_ocr_calls(scanned):

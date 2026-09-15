@@ -55,14 +55,19 @@ gtd-gen tasks.json --out today.pdf [--date 2026-06-01] [--html debug.html]
   "inbox":     [{"act": "...", "handle": "opaque caller id"}],
   "next":      [{"act": "...", "pri": 7, "due": "2 Jun", "proj": "test"}],
   "delegated": [{"act": "...", "to": "Dave", "due": "9 Jun"}],
-  "tickler":   {"week": [{"act": "..."}], "month": [], "quarter": []}
+  "tickler":   {"week": [{"act": "..."}], "month": [], "quarter": []},
+  "context":   {"projects": ["test", "epsrc"], "people": ["Dave", "Priya"]}
 }
 ```
 
 Ids (`IN-01`, `NA-01`, `DG-01`, `TK-01`…) are assigned in order; any extra
 keys (such as a caller's `handle`) ride along into the embedded
 `gtd.tasks.json` (schema `gtd.tasks/1`, `{id: item}`) so the scan result can
-be mapped back to whatever produced the task.
+be mapped back to whatever produced the task. The optional top-level
+`context` (`projects`, `people`) is the vocabulary the sheet was printed
+against; it rides along in the embedded tasks document too, and is handed to
+the model reading a ✎-edited row so it can match handwriting against real
+project/person names instead of guessing spelling.
 
 ### Scan an annotated sheet
 
@@ -138,9 +143,36 @@ the ticks.
 Actions per bucket: inbox `to_next | to_deleg | drop | defer`; next
 `done | to_deleg | defer`; delegated `done | to_me | defer`; tickler
 `activate | done | defer` (re-defer). `defer` carries `defer_period`
-(`1w`/`1m`/`1q`). `edited` is set when the ✎ box is ticked; `act_text` then
-holds the amended action as transcribed. Raw fill ratios stay under `ticks`
-for auditing.
+(`1w`/`1m`/`1q`). `edited` is set when the ✎ box is ticked. Raw fill ratios
+stay under `ticks` for auditing.
+
+When ✎ is ticked, the whole row is cropped (the manifest's `<id>:row` ROI, or
+the union of the task's other ROIs on a sheet printed before `row` existed)
+and sent to the OCR engine's `interpret()` call along with the row's printed
+fields (`act`, `bucket`, `pri`, `due`, `proj`, `to`/`period`), today's date,
+and the vocabulary from the tasks document's `context`. The reply is a
+`gtd.edit/1` object, stored under `edit`:
+
+```json
+{"handwriting": "Tell Louise I pulled out", "understood": true, "confidence": 0.92,
+ "route": "keep", "text": "Tell Louise I pulled out", "priority": null, "due": null,
+ "project": null, "person": null, "note": "struck through printed text, rewritten below"}
+```
+
+- `handwriting` — verbatim transcription of everything handwritten in the crop.
+- `understood` — `false` means the model couldn't work out the intent; every
+  other field is then `null` and `note` says why, rather than guessing.
+- `route` — where the item should end up: `keep` (stays put, other fields
+  applied in place — the default), `done`, `drop`, `next`, `delegated`
+  (fills `person`), `tickler_1w`/`1m`/`1q`, `inbox`, `scheduled` (fills `due`).
+- `text`, `priority`, `due`, `project`, `person` — the new value for that
+  field, or `null` if unchanged.
+- `note` — one sentence on how the row was read, or why it wasn't.
+
+`act_text` is still set (to `edit.text` when `edit.understood` and `text` is
+non-null, or from a plain re-read of the action-only crop when the engine has
+no `interpret()`) so older consumers that only look at `act_text` keep
+working.
 
 ## Project structure
 

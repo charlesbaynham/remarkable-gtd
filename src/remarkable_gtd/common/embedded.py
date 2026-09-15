@@ -43,13 +43,17 @@ def read_state(pdf_bytes: bytes) -> tuple[dict | None, dict | None]:
     return _load(ATTACH_MANIFEST), _load(ATTACH_TASKS)
 
 
-def tasks_document(buckets: list[dict], the_date: str) -> dict:
+def tasks_document(buckets: list[dict], the_date: str, context: dict | None = None) -> dict:
     """Flatten the generator's bucket list into ``{id: item}`` keyed by task id.
 
     Every item keeps the fields it was given (``act``, ``pri``, ``due``,
     ``proj``, ``to`` and any caller extras such as a vault ``handle``) plus
     ``bucket`` (``inbox``/``next``/``delegated``/``tickler``) and, for
     tickler items, ``period`` (``week``/``month``/``quarter``).
+
+    ``context`` (``{"projects": [...], "people": [...]}``) is the vocabulary
+    the sheet was printed against; it rides along so the scanner can hand it
+    to the model that reads free-form annotations.
     """
     out: dict[str, dict] = {}
     for b in buckets:
@@ -67,4 +71,7 @@ def tasks_document(buckets: list[dict], the_date: str) -> dict:
                 entry = dict(t)
                 entry["bucket"] = b["key"]
                 out[t["id"]] = entry
-    return {"schema": TASKS_SCHEMA, "date": the_date, "tasks": out}
+    doc = {"schema": TASKS_SCHEMA, "date": the_date, "tasks": out}
+    if context:
+        doc["context"] = context
+    return doc

@@ -117,6 +117,31 @@ def test_fields_and_act_text_passthrough():
     assert entry["act_text"] == "Amended action"
 
 
+def test_edit_passthrough():
+    edit = {
+        "handwriting": "Tell Louise I pulled out", "understood": True, "confidence": 0.9,
+        "route": "keep", "text": "Tell Louise I pulled out", "priority": None, "due": None,
+        "project": None, "person": None, "note": "struck through and rewritten",
+    }
+    entry, _ = resolve_task(
+        "NA-06",
+        ticks(done=False, to_deleg=False, edit=True),
+        "next",
+        act_text="Tell Louise I pulled out",
+        edit=edit,
+    )
+    assert entry["edit"] == edit
+
+
+def test_edit_absent_by_default():
+    entry, _ = resolve_task(
+        "NA-01",
+        ticks(done=True, to_deleg=False, edit=False),
+        "next",
+    )
+    assert "edit" not in entry
+
+
 def test_build_decisions_shape():
     doc = build_decisions(
         bucket="next", the_date="2026-05-30", header_qr="GTD|next|2026-05-30",

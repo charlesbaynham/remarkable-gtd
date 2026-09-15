@@ -72,7 +72,7 @@ def test_tick_boxes_do_not_overlap(manifest):
     box_keys = [
         k for k in rois
         if not k.startswith(("reg:", "page:", "capture:"))
-        and not k.endswith((":qr", ":act"))
+        and not k.endswith((":qr", ":act", ":row"))
         and ":slot_" not in k
     ]
     rects = {k: Rect.from_dict(rois[k]) for k in box_keys}

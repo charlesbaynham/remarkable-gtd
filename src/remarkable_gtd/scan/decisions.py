@@ -37,6 +37,7 @@ def resolve_task(
     bucket: str,
     field_texts: dict[str, dict] | None = None,
     act_text: str | None = None,
+    edit: dict | None = None,
 ) -> tuple[dict, list[str]]:
     """Build the decisions entry for one task from its tick evidence.
 
@@ -47,6 +48,8 @@ def resolve_task(
         bucket: Bucket key (``inbox``/``next``/``delegated``/``tickler``).
         field_texts: Optional ``{field: {"text": ..., ...}}`` of OCR'd slots.
         act_text: Optional OCR of the action region (when edit is ticked).
+        edit: Optional structured reading of the whole annotated row
+            (``gtd.edit/1``, see :data:`remarkable_gtd.scan.ocr.EDIT_SCHEMA`).
 
     Returns:
         ``(task_entry, warnings)``.
@@ -101,6 +104,8 @@ def resolve_task(
         entry["fields"] = field_texts
     if act_text is not None:
         entry["act_text"] = act_text
+    if edit is not None:
+        entry["edit"] = edit
     return entry, warnings
 
 

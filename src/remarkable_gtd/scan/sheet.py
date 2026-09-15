@@ -17,19 +17,12 @@ from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
 RASTER_DPI = 226  # reMarkable 2 native: 157.8 mm page -> 1404 px
 
 
-def task_texts_from_tasks(tasks: dict | None) -> dict[str, str]:
-    """``{task_id: printed action text}`` from a ``gtd.tasks/1`` document."""
-    if not tasks:
-        return {}
-    return {tid: t.get("act", "") for tid, t in tasks.get("tasks", {}).items()}
-
-
 def scan_pdf(
     pdf_path: Path,
     manifest: dict,
     cfg: ScanConfig | None = None,
     work_dir: Path | None = None,
-    task_texts: dict[str, str] | None = None,
+    tasks: dict | None = None,
     dpi: int = RASTER_DPI,
 ) -> dict:
     """Scan every page of an annotated PDF against the manifest's pages.
@@ -68,7 +61,7 @@ def scan_pdf(
         img_path = work_dir / f"{pdf_path.stem}.page{i + 1}.png"
         pix.save(str(img_path))
         try:
-            decisions = run_scan(img_path, manifest, cfg, page_key, task_texts=task_texts)
+            decisions = run_scan(img_path, manifest, cfg, page_key, tasks=tasks)
             page_results.append({"page_key": page_key, "page_no": i + 1, **decisions})
         except Exception as exc:  # keep going: one bad page must not lose the rest
             page_results.append({"page_key": page_key, "page_no": i + 1, "error": str(exc)})
@@ -122,9 +115,7 @@ def scan_rmdoc(
 
     annotated = work_dir / f"{rmdoc_path.stem}.annotated.pdf"
     render_rmdoc(rmdoc_path, annotated)
-    decisions = scan_pdf(
-        annotated, manifest, cfg, work_dir, task_texts=task_texts_from_tasks(tasks)
-    )
+    decisions = scan_pdf(annotated, manifest, cfg, work_dir, tasks=tasks)
     decisions["source_rmdoc"] = str(rmdoc_path)
     (work_dir / f"{rmdoc_path.stem}.decisions.json").write_text(
         json.dumps(decisions, indent=2), encoding="utf-8"

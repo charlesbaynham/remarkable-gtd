@@ -71,7 +71,7 @@
 {%- endmacro %}
 
 {% macro row(cat, t) -%}
-<div class="row">
+<div class="row" data-roi="{{ t.id }}:row">
   <div class="row-top">
     <div class="rail">
       <span class="qr" data-roi="{{ t.id }}:qr"><img src="{{ qr(t.id) }}" alt="{{ t.id }}" /></span>

@@ -38,7 +38,7 @@ class ScanConfig:
 # ROI-key prefixes that are not per-task entries.
 _SPECIAL_PREFIXES = ("reg:", "page:", "capture:")
 # Per-task ROI suffixes that are not gutter tick boxes.
-_NON_TICK_SUFFIXES = ("qr", "act")
+_NON_TICK_SUFFIXES = ("qr", "act", "row")
 
 
 def load_image(image_path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -101,12 +101,46 @@ def _task_rois(rois: dict, task_id: str) -> dict[str, dict]:
     return {k[len(prefix):]: v for k, v in rois.items() if k.startswith(prefix)}
 
 
+def row_roi(
+    task_rois: dict, page_w_frac_pad: float = 0.01, page_h_frac_pad: float = 0.003
+) -> dict:
+    """The ROI covering a task's whole row, for a ✎-EDIT crop.
+
+    Uses the generator's own ``row`` ROI when present. Sheets printed before
+    it existed carry no ``row`` ROI, so the fallback unions every ROI the
+    task has (gutter ticks, slots, act, qr) and pads it slightly, since the
+    printed row extends a little beyond its tightest bounding box.
+    """
+    if "row" in task_rois:
+        return task_rois["row"]
+    x1 = min(r["x"] for r in task_rois.values()) - page_w_frac_pad
+    y1 = min(r["y"] for r in task_rois.values()) - page_h_frac_pad
+    x2 = max(r["x"] + r["w"] for r in task_rois.values()) + page_w_frac_pad
+    y2 = max(r["y"] + r["h"] for r in task_rois.values()) + page_h_frac_pad
+    x1, y1 = max(0.0, x1), max(0.0, y1)
+    x2, y2 = min(1.0, x2), min(1.0, y2)
+    return {"x": x1, "y": y1, "w": x2 - x1, "h": y2 - y1}
+
+
+_FAILED_EDIT = {
+    "handwriting": "",
+    "understood": False,
+    "confidence": 0.0,
+    "route": "keep",
+    "text": None,
+    "priority": None,
+    "due": None,
+    "project": None,
+    "person": None,
+}
+
+
 def run_scan(
     image_path: Path,
     manifest: dict,
     cfg: ScanConfig | None = None,
     page_key: str | None = None,
-    task_texts: dict[str, str] | None = None,
+    tasks: dict | None = None,
 ) -> dict:
     """Run the full pipeline on one sheet image.
 
@@ -117,8 +151,10 @@ def run_scan(
         page_key: Manifest page key (e.g. ``"GTD|next|2026-05-30"``). If
             omitted: auto-selected when the manifest has one page, else
             detected from QR codes in the image.
-        task_texts: Optional ``{task_id: printed action text}``; given to
-            the OCR engine as context when a row's Edit box is ticked.
+        tasks: The ``gtd.tasks/1`` document (``{"tasks": {id: entry},
+            "context": {...}}``). Entries give the printed text for the
+            legacy act-crop OCR fallback and the fields/vocabulary handed to
+            an engine's ``interpret`` when a row's Edit box is ticked.
 
     Returns:
         The decisions document (schema ``gtd.decisions/1``).
@@ -128,7 +164,9 @@ def run_scan(
         RegistrationError: If the corner marks cannot be found.
     """
     cfg = cfg or ScanConfig()
-    task_texts = task_texts or {}
+    tasks = tasks or {}
+    task_entries = tasks.get("tasks") or {}
+    vocabulary = tasks.get("context")
     image_path = Path(image_path)
     gray, binary = load_image(image_path)
 
@@ -217,22 +255,44 @@ def run_scan(
                 threshold=cfg.slot_fill_threshold,
             )
             if inked:
+                context = None
+                if field == "project" and vocabulary and vocabulary.get("projects"):
+                    context = ", ".join(vocabulary["projects"])
                 field_texts[field] = {
-                    "text": ocr_crop(roi, field),
+                    "text": ocr_crop(roi, field, context=context),
                     "fill": round(fill, 4),
                 }
 
-        # Edit ticked: re-read the (possibly amended) action text.
+        # Edit ticked: ask the engine to interpret the whole row; fall back
+        # to re-reading just the action text if it can't or won't.
+        task_entry = task_entries.get(task_id, {})
+        edit: dict | None = None
         act_text = None
-        if edited and "act" in t_rois:
-            act_text = ocr_crop(
-                t_rois["act"], "act", inset_px=0, context=task_texts.get(task_id)
-            )
+        if edited:
+            interpret_fn = getattr(ocr, "interpret", None)
+            if interpret_fn is not None:
+                roi = row_roi(t_rois)
+                x1, y1, x2, y2 = ink_mod.roi_to_pixels(roi, canvas)
+                try:
+                    edit = interpret_fn(
+                        warped_gray[y1:y2, x1:x2], task_entry, vocabulary, parsed["date"]
+                    )
+                except Exception as exc:
+                    edit = {**_FAILED_EDIT, "note": f"interpretation failed: {exc}"}
+                    warnings.append(f"{task_id}: edit interpretation failed — {exc}")
+            if interpret_fn is None or edit is None:
+                if "act" in t_rois:
+                    act_text = ocr_crop(
+                        t_rois["act"], "act", inset_px=0, context=task_entry.get("act")
+                    )
+            elif edit.get("understood") and edit.get("text") is not None:
+                act_text = edit["text"]
 
         entry, task_warnings = resolve_task(
             task_id, ticks, bucket,
             field_texts=field_texts or None,
             act_text=act_text,
+            edit=edit,
         )
         qr_text = task_qrs.get(task_id)
         entry["qr_verified"] = qr_text == task_id
