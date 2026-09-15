@@ -29,7 +29,7 @@ def main(argv=None) -> int:
 
     from remarkable_gtd.scan.manifest_io import load_manifest
     from remarkable_gtd.scan.pipeline import ScanConfig
-    from remarkable_gtd.scan.sheet import scan_pdf, scan_rmdoc, summarize, task_texts_from_tasks
+    from remarkable_gtd.scan.sheet import scan_pdf, scan_rmdoc, summarize
 
     src = Path(args.input)
     out_path = Path(args.output)
@@ -54,7 +54,7 @@ def main(argv=None) -> int:
             if manifest is None:
                 print("Error: no --manifest given and none embedded in the PDF", file=sys.stderr)
                 return 1
-        decisions = scan_pdf(src, manifest, cfg, work_dir, task_texts=task_texts_from_tasks(tasks))
+        decisions = scan_pdf(src, manifest, cfg, work_dir, tasks=tasks)
 
     out_path.write_text(json.dumps(decisions, indent=2), encoding="utf-8")
     s = summarize(decisions)

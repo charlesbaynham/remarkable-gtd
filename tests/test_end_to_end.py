@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from remarkable_gtd.common.schema import make_page_key
+from remarkable_gtd.scan.ink import roi_to_pixels
 from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
 from tests.conftest import needs_chromium, paint_ink, rasterize_page, warp_image
 
@@ -38,6 +39,33 @@ def by_id(decisions: dict) -> dict:
     return {t["id"]: t for t in decisions["tasks"]}
 
 
+class FakeEditEngine:
+    """Records the crop it's asked to interpret; returns a fixed reading."""
+
+    name = "fake-edit"
+
+    def __init__(self):
+        self.interpret_crops: list[tuple[int, int]] = []
+
+    def read(self, image, hint=None, context=None) -> str:
+        return ""
+
+    def interpret(self, image, task, vocabulary=None, today=None) -> dict:
+        self.interpret_crops.append(image.shape[:2])
+        return {
+            "handwriting": "Amended",
+            "understood": True,
+            "confidence": 0.95,
+            "route": "keep",
+            "text": "Amended",
+            "priority": None,
+            "due": None,
+            "project": None,
+            "person": None,
+            "note": "struck through and rewritten",
+        }
+
+
 def test_clean_page_all_none(next_page_img, manifest, tmp_path):
     img_path = save_png(next_page_img, tmp_path / "clean.png")
     decisions = run_scan(img_path, manifest, ScanConfig(), page_key=NEXT_KEY)
@@ -61,7 +89,8 @@ def test_ticked_decisions_recovered(next_page_img, manifest, tmp_path):
     img = paint_ink(img, page, "NA-02:slot_due", "text:6 Jun")
     img_path = save_png(img, tmp_path / "ticked.png")
 
-    decisions = run_scan(img_path, manifest, ScanConfig(), page_key=NEXT_KEY)
+    engine = FakeEditEngine()
+    decisions = run_scan(img_path, manifest, ScanConfig(ocr_engine=engine), page_key=NEXT_KEY)
     tasks = by_id(decisions)
 
     assert tasks["NA-01"]["action"] == "done"
@@ -70,10 +99,22 @@ def test_ticked_decisions_recovered(next_page_img, manifest, tmp_path):
     assert tasks["NA-02"]["action"] == "defer"
     assert tasks["NA-02"]["defer_period"] == "1m"
     assert tasks["NA-02"]["edited"] is True
-    # OCR trigger logic: the inked slot must appear even with NullEngine.
+    # OCR trigger logic: the inked slot must appear even though the engine
+    # only implements interpret() for the row crop.
     assert "due" in tasks["NA-02"]["fields"]
     # NA-01's slots were untouched.
     assert "fields" not in tasks["NA-01"]
+
+    assert tasks["NA-02"]["edit"]["text"] == "Amended"
+    assert tasks["NA-02"]["act_text"] == "Amended"
+    assert len(engine.interpret_crops) == 1
+    crop_h, crop_w = engine.interpret_crops[0]
+    act_x1, act_y1, act_x2, act_y2 = roi_to_pixels(
+        page["rois"]["NA-02:act"],
+        (1404, round(1404 * page["render"]["h_px"] / page["render"]["w_px"])),
+    )
+    assert crop_h > act_y2 - act_y1
+    assert crop_w > act_x2 - act_x1
 
 
 def test_survives_rotation_and_keystone(next_page_img, manifest, tmp_path):

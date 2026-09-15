@@ -94,3 +94,94 @@ def test_openrouter_content_parts_and_empty(monkeypatch):
 
     with mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen):
         assert ocr.OpenRouterEngine().read(np.zeros((10, 10), np.uint8)) == ""
+
+
+def test_build_edit_prompt_mentions_printed_text_project_and_today():
+    task = {"id": "NA-06", "bucket": "next", "act": "Make a plan", "pri": 3, "due": None, "proj": None}
+    prompt = ocr.build_edit_prompt(
+        task, vocabulary={"projects": ["Wedding 2026"], "people": ["Louise"]}, today="2026-09-15"
+    )
+    assert "Make a plan" in prompt
+    assert "Wedding 2026" in prompt
+    assert "2026-09-15" in prompt
+    assert "Louise" in prompt
+
+
+def test_null_engine_interpret_is_none():
+    assert ocr.NullEngine().interpret(np.zeros((10, 10), np.uint8), {"act": "x", "bucket": "next"}) is None
+
+
+def test_build_prompt_project_vocabulary():
+    prompt = ocr.build_prompt("project", "Wedding 2026, ERC grant")
+    assert "Wedding 2026" in prompt and "ERC grant" in prompt
+
+
+def test_openrouter_interpret_request_and_reply(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    captured: dict = {}
+    reply_body = {
+        "handwriting": "Tell Louise I pulled out",
+        "understood": True,
+        "confidence": 0.9,
+        "route": "keep",
+        "text": "Tell Louise I pulled out",
+        "priority": None,
+        "due": None,
+        "project": None,
+        "person": None,
+        "note": "struck through and rewritten",
+    }
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        reply = {"choices": [{"message": {"content": json.dumps(reply_body)}}]}
+        return _FakeResponse(json.dumps(reply).encode("utf-8"))
+
+    task = {"id": "NA-06", "bucket": "next", "act": "Make a plan", "pri": 3, "due": None, "proj": "Wedding 2026"}
+    with mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen):
+        eng = ocr.OpenRouterEngine()
+        img = np.full((60, 400), 255, dtype=np.uint8)
+        result = eng.interpret(img, task, vocabulary={"projects": ["Wedding 2026"]}, today="2026-09-15")
+
+    assert result == reply_body
+    assert eng.requests_made == 1
+    body = captured["body"]
+    assert body["response_format"]["json_schema"]["strict"] is True
+    assert body["response_format"]["json_schema"]["schema"] == ocr.EDIT_SCHEMA
+    prompt_text = body["messages"][0]["content"][0]["text"]
+    assert "Make a plan" in prompt_text
+    assert "Wedding 2026" in prompt_text
+    assert "2026-09-15" in prompt_text
+
+
+def test_openrouter_interpret_reply_wrapped_in_fence(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    reply_body = {
+        "handwriting": "x", "understood": False, "confidence": 0.1, "route": "keep",
+        "text": None, "priority": None, "due": None, "project": None, "person": None,
+        "note": "illegible",
+    }
+
+    def fake_urlopen(req, timeout=None):
+        content = "```json\n" + json.dumps(reply_body) + "\n```"
+        reply = {"choices": [{"message": {"content": content}}]}
+        return _FakeResponse(json.dumps(reply).encode("utf-8"))
+
+    with mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen):
+        eng = ocr.OpenRouterEngine()
+        result = eng.interpret(np.zeros((10, 10), np.uint8), {"act": "x", "bucket": "next"})
+
+    assert result == reply_body
+
+
+def test_openrouter_interpret_unparseable_reply_raises(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+
+    def fake_urlopen(req, timeout=None):
+        reply = {"choices": [{"message": {"content": "not json at all"}}]}
+        return _FakeResponse(json.dumps(reply).encode("utf-8"))
+
+    with mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen):
+        eng = ocr.OpenRouterEngine()
+        with pytest.raises(RuntimeError):
+            eng.interpret(np.zeros((10, 10), np.uint8), {"act": "x", "bucket": "next"})

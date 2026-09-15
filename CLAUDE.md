@@ -46,14 +46,14 @@ gtd-overlay today.pdf -o overlay/                  # ROI boxes drawn on each pag
 
 ### Machine-vision pipeline (`src/remarkable_gtd/scan/`)
 
-`sheet.scan_rmdoc()` / `sheet.scan_pdf()` drive the per-page pipeline `pipeline.run_scan(image_path, manifest, cfg, page_key, task_texts)`:
+`sheet.scan_rmdoc()` / `sheet.scan_pdf()` drive the per-page pipeline `pipeline.run_scan(image_path, manifest, cfg, page_key, tasks)`:
 
 1. **Load** — `cv2.imread`; EXIF transpose via PIL; grayscale + Otsu binary.
 2. **Reg marks** (`rectify.find_reg_marks`) — Searches 15% corner quadrants for cross-shaped components. Raises `RegistrationError` if < 4 found.
 3. **Rectify** (`rectify.rectify`) — `cv2.getPerspectiveTransform` from detected marks to manifest `reg:*` centers, warped to a canonical canvas (width 1404 px). Residual is stored for QA.
 4. **QR decode** (`qr.py`) — `cv2.QRCodeDetector` (pyzbar as optional second decoder). `decode_region` widens the crop progressively — the header QR needs a bigger quiet zone than the row QRs. `decode_header` checks `page:qr`; `decode_task_qrs` verifies per-row identity.
 5. **Ink detection** (`ink.py`) — `detect_box()` crops the ROI from the rectified binary, insets by `inner_inset_frac` (0.22 for tick boxes, 0.15 for slots) to exclude the printed border, and measures dark-pixel fill ratio. Tick threshold 0.06, slot/capture threshold 0.03.
-6. **Handwriting** (`ocr.py`) — `OcrEngine` Protocol `read(image, hint, context)`. `OpenRouterEngine` (default in production; `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`), `TesseractEngine`, `NullEngine` (tests). Invoked only where ink is present, on a tight crop, with a hint naming the region (`priority`/`due`/`project`/`to`/`capture`/`act`) and, for an amended action, the printed text as context.
+6. **Handwriting** (`ocr.py`) — `OcrEngine` Protocol `read(image, hint, context)`. `OpenRouterEngine` (default in production; `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`), `TesseractEngine`, `NullEngine` (tests). Invoked only where ink is present, on a tight crop, with a hint naming the region (`priority`/`due`/`project`/`to`/`capture`/`act`) and, for an amended action, the printed text as context. When a row's ✎ EDIT box is ticked, the pipeline instead crops the whole row (`row_roi()`) and calls the engine's optional `interpret(image, task, vocabulary, today)`, which returns a structured `gtd.edit/1` reading (schema `ocr.EDIT_SCHEMA`) — `handwriting`, `understood`, `route`, and the changed fields. `NullEngine.interpret()` returns `None`; engines without `interpret` (or one returning `None`) fall back to re-reading just the action crop.
 7. **Decisions** (`decisions.py`) — `resolve_task()` maps ticked verbs to a single `action` per task using bucket-specific precedence (`done > activate > to_next > to_me > to_deleg > drop > defer`). `edited` flag is orthogonal. Conflict warnings are emitted when multiple boxes are ticked.
 
 ### Debugging
@@ -76,8 +76,8 @@ gtd-overlay today.pdf -o overlay/                  # ROI boxes drawn on each pag
 ### Schemas
 
 - **Manifest** (`gtd.manifest/1`): `{schema, date, page_w_mm, pages: {"GTD|<bucket>|<date>": {bucket, page_no, render: {w_px, h_px}, rois: {"<key>": {x, y, w, h}}}}}`
-- **Tasks** (`gtd.tasks/1`, embedded): `{schema, date, tasks: {"<id>": {act, bucket, period?, pri?, due?, proj?, to?, ...caller extras}}}`
-- **Decisions** (`gtd.decisions/1`): per page `{page_key, page_no, bucket, date, header_qr, rectify: {residual_px, reg_marks_found}, tasks: [{id, qr_verified, action, defer_period?, edited, act_text?, fields: {<f>: {text, fill}}, ticks, warnings}], captures: [{line, text, inked}], warnings}`; `gtd-scan-pdf` wraps pages in `{schema, source_pdf, pages: [...]}`.
+- **Tasks** (`gtd.tasks/1`, embedded): `{schema, date, tasks: {"<id>": {act, bucket, period?, pri?, due?, proj?, to?, ...caller extras}}, context?: {projects: [...], people: [...]}}`
+- **Decisions** (`gtd.decisions/1`): per page `{page_key, page_no, bucket, date, header_qr, rectify: {residual_px, reg_marks_found}, tasks: [{id, qr_verified, action, defer_period?, edited, act_text?, edit?, fields: {<f>: {text, fill}}, ticks, warnings}], captures: [{line, text, inked}], warnings}`; `gtd-scan-pdf` wraps pages in `{schema, source_pdf, pages: [...]}`. `edit` (`gtd.edit/1`, present when ✎ was ticked) is `{handwriting, understood, confidence, route, text, priority, due, project, person, note}` — see `ocr.EDIT_SCHEMA`.
 
 ## CI
 
