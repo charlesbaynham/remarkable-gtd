@@ -27,7 +27,12 @@ class ScanConfig:
     """Tunables for the scan pipeline."""
 
     ink_fill_threshold: float = 0.06   # tick boxes
-    slot_fill_threshold: float = 0.03  # write-in slots / capture lines (OCR trigger)
+    # Write-in slots / capture rows (the OCR trigger). Unchanged when the
+    # slots grew to stylus size: a single handwritten digit in a 10x8 mm
+    # PRIORITY box is roughly 6 mm tall by 3 mm wide of stroke-covered area,
+    # still ~6 % fill — comfortably above 0.03 — and a written word or date
+    # far more. Raising it would only start losing sparse handwriting.
+    slot_fill_threshold: float = 0.03
     inner_inset_frac: float = 0.22     # excludes the printed box border (tick boxes)
     slot_inset_frac: float = 0.15      # slots are wide; the border is only ~3px but
                                        # a 1px scale mismatch would leak it in
