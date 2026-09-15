@@ -6,10 +6,11 @@ GTD (Getting Things Done) paper workflow for a reMarkable 2 e-ink tablet.
 
 Two halves, bridged by a **layout manifest**:
 
-1. **Generation (`gtd-gen`)** — renders a 4-page PDF (one tall, auto-height
-   page per bucket: Inbox / Next Actions / Delegated / Tickler) with a row per
-   task, a QR code per row, labelled tick boxes in a right-hand gutter, blank
-   metadata slots and capture lines. Chromium measures every box and the
+1. **Generation (`gtd-gen`)** — renders a tall, auto-height page per bucket
+   (Inbox / Next Actions / Delegated / Tickler), then a read-only Projects
+   summary and one page per project, with a row per task, a QR code per row,
+   labelled tick boxes in a right-hand gutter, blank metadata slots and blank
+   capture rows. Chromium measures every box and the
    manifest (normalised rectangles keyed by `<task id>:<verb>`) is written
    next to the PDF **and embedded inside it** together with the task list, so a
    sheet that comes back from the device carries everything needed to read it.
@@ -20,6 +21,15 @@ Two halves, bridged by a **layout manifest**:
    (metadata slot, capture line, or an amended action) is a small crop sent to
    a handwriting engine — by default a vision LLM through OpenRouter, so a
    whole sheet costs a handful of tiny image requests.
+
+**Deterministic first, AI only by explicit opt-in.** Everything the sheet can
+say with a tick box, a QR, a fixed slot or a printed id is applied by plain
+Python with no model involved — that is what all the fiducials and labelled
+boxes are for. A vision model runs only to transcribe handwriting found in an
+inked write-in region, and to interpret a whole row when you explicitly asked
+for it by ticking ✎ Edit. That agent may return no operations at all, and is
+told to say "not understood" rather than guess: ambiguity is reported, never
+resolved silently.
 
 The vault side (turning a GTD vault into `tasks.json`, applying the decisions
 back, the nightly schedule) lives with the vault: see `.gtd/remarkable/` in the
@@ -56,9 +66,19 @@ gtd-gen tasks.json --out today.pdf [--date 2026-06-01] [--html debug.html]
   "next":      [{"act": "...", "pri": 7, "due": "2 Jun", "proj": "test"}],
   "delegated": [{"act": "...", "to": "Dave", "due": "9 Jun"}],
   "tickler":   {"week": [{"act": "..."}], "month": [], "quarter": []},
+  "projects":  [{"name": "epsrc", "goal": "Submit the grant",
+                 "status": ["costings with the research office"],
+                 "stalled": false,
+                 "items": [{"text": "Draft the case", "done": true, "handle": "..."},
+                           {"text": "Send to Oliver", "done": false,
+                            "handle": "...", "surfaced": "next"}]}],
   "context":   {"projects": ["test", "epsrc"], "people": ["Dave", "Priya"]}
 }
 ```
+
+Pages come out in a fixed order — inbox, next, delegated, tickler, projects,
+project-01, project-02… — because the scanner matches PDF pages to manifest
+keys by position.
 
 Ids (`IN-01`, `NA-01`, `DG-01`, `TK-01`…) are assigned in order; any extra
 keys (such as a caller's `handle`) ride along into the embedded
@@ -68,6 +88,30 @@ be mapped back to whatever produced the task. The optional top-level
 against; it rides along in the embedded tasks document too, and is handed to
 the model reading a ✎-edited row so it can match handwriting against real
 project/person names instead of guessing spelling.
+
+### Capture rows and project pages
+
+The Inbox page ends with six blank rows `CP-01`…`CP-06`. Each is a full inbox
+row — write the new item on the ruled area and tick in the same gutter where
+it should go, fill in priority/due/project as usual, and tick **NEW** next to
+the PROJECT slot if the project you wrote does not exist yet. The `NEW` box
+(`<id>:new_project`) is on inbox, next-action and delegated rows too, and
+comes back as an orthogonal `new_project` flag, never an action.
+
+`projects` adds a read-only summary page — one block per project with its
+goal, open-item count, current next action and a badge saying which view that
+action is surfaced in (`NA`/`DG`/`SC`/`TK`, or `STALLED`) — followed by one
+page per project. A project page prints every unchecked item as a row
+(`P01-03`, gutter ✓ Done + ✎ Edit only), lists the checked ones struck
+through, and ends with four blank add-an-action lines (`P01-C1`…`P01-C4`).
+The summary is marked `scan: false` in the manifest and the scanner skips it
+entirely.
+
+Each summary block is a PDF GoTo link to that project's page, and each
+project page has a `← Projects` link back. Whether the reMarkable's own
+reader follows internal links is untested firmware behaviour — the page
+numbers are printed on the summary (`P01 · p6`) so the sheet still navigates
+by hand if it does not.
 
 ### Scan an annotated sheet
 
@@ -84,8 +128,11 @@ gtd-scan page.png --manifest today.manifest.json -o decisions.json
 ```
 
 Handwriting engines (`--ocr`): `openrouter` (needs `OPENROUTER_API_KEY`;
-`OPENROUTER_MODEL` picks the model, default Google Gemini Flash),
-`tesseract`, or `null` (flag inked regions, transcribe nothing).
+`OPENROUTER_MODEL` picks the model, default Google Gemini Flash, and
+`OPENROUTER_EDIT_MODEL` overrides it for the ✎ EDIT agent alone — that call
+reasons about your vault rather than reading glyphs, so it is worth a
+stronger model), `tesseract`, or `null` (flag inked regions, transcribe
+nothing).
 
 ### Check alignment by eye
 
@@ -132,47 +179,68 @@ the ticks.
 {"pages": [{
   "page_key": "GTD|next|2026-06-01", "bucket": "next",
   "rectify": {"residual_px": 0.4, "reg_marks_found": 4},
-  "tasks": [{"id": "NA-02", "action": "to_deleg", "edited": false, "qr_verified": true,
+  "tasks": [{"id": "NA-02", "action": "to_deleg", "edited": false,
+             "new_project": false, "qr_verified": true,
              "fields": {"to": {"text": "Dave", "fill": 0.05}},
              "ticks": {"done": {"inked": false, "fill": 0.0}, "...": {}}}],
-  "captures": [{"line": "N1", "inked": true, "text": "Buy milk"}],
+  "captures": [],
   "warnings": []
+}, {
+  "page_key": "GTD|projects|2026-06-01", "page_no": 5, "skipped": true
 }]}
 ```
 
 Actions per bucket: inbox `to_next | to_deleg | drop | defer`; next
 `done | to_deleg | defer`; delegated `done | to_me | defer`; tickler
 `activate | done | defer` (re-defer). `defer` carries `defer_period`
-(`1w`/`1m`/`1q`). `edited` is set when the ✎ box is ticked. Raw fill ratios
-stay under `ticks` for auditing.
+(`1w`/`1m`/`1q`). A project-page item can only be `done`; a blank capture row
+takes the inbox verbs. `edited` is set when the ✎ box is ticked and
+`new_project` when the NEW box is; both are flags, never actions. Raw fill
+ratios stay under `ticks` for auditing. The read-only projects summary is
+returned as `{"page_key", "page_no", "skipped": true}`.
 
 When ✎ is ticked, the whole row is cropped (the manifest's `<id>:row` ROI, or
 the union of the task's other ROIs on a sheet printed before `row` existed)
 and sent to the OCR engine's `interpret()` call along with the row's printed
-fields (`act`, `bucket`, `pri`, `due`, `proj`, `to`/`period`), today's date,
-and the vocabulary from the tasks document's `context`. The reply is a
-`gtd.edit/1` object, stored under `edit`:
+fields (`act`, `bucket`, `pri`, `due`, `proj`, `to`/`period`/`proj`), today's
+date, and the vocabulary from the tasks document's `context`.
+
+This is the **only** place a model decides anything: ticks, QRs and slots are
+read deterministically, and the agent runs because you asked it to by ticking
+the box. It is given a brief — what each GTD list means, what each vault
+operation does, the printed row, today, your project and people names — and
+replies with a `gtd.edit/2` object, stored under `edit`:
 
 ```json
-{"handwriting": "Tell Louise I pulled out", "understood": true, "confidence": 0.92,
- "route": "keep", "text": "Tell Louise I pulled out", "priority": null, "due": null,
- "project": null, "person": null, "note": "struck through printed text, rewritten below"}
+{"handwriting": "→ Louise, chase Fri", "understood": true, "confidence": 0.92,
+ "note": "handed over to Louise with a chase-by date",
+ "operations": [
+   {"op": "move", "to": "delegated", "person": "Louise", "due": "2026-09-19",
+    "text": null, "priority": null, "project": null, "period": null,
+    "name": null, "goal": null}]}
 ```
 
 - `handwriting` — verbatim transcription of everything handwritten in the crop.
-- `understood` — `false` means the model couldn't work out the intent; every
-  other field is then `null` and `note` says why, rather than guessing.
-- `route` — where the item should end up: `keep` (stays put, other fields
-  applied in place — the default), `done`, `drop`, `next`, `delegated`
-  (fills `person`), `tickler_1w`/`1m`/`1q`, `inbox`, `scheduled` (fills `due`).
-- `text`, `priority`, `due`, `project`, `person` — the new value for that
-  field, or `null` if unchanged.
+- `understood` — `false` means the model could not work out the intent;
+  `operations` is then empty and `note` says why, rather than guessing.
+- `operations` — none, one or several. `op` is one of `update`, `complete`,
+  `delete`, `move` (with `to` = `next`/`delegated`/`inbox`/`scheduled`/
+  `tickler`/`project`, `period` `1w`/`1m`/`1q` for the tickler), `capture`,
+  `add_next_action`, `delegate`, `schedule`, `add_to_tickler`,
+  `create_project` (`name`, `goal`), `add_project_action` (`name`, `text`).
+  The row's own item is implied by `update`/`complete`/`delete`/`move`.
+  Every key is present on every operation; the inapplicable ones are `null`.
 - `note` — one sentence on how the row was read, or why it wasn't.
 
-`act_text` is still set (to `edit.text` when `edit.understood` and `text` is
-non-null, or from a plain re-read of the action-only crop when the engine has
-no `interpret()`) so older consumers that only look at `act_text` keep
-working.
+A gutter tick is read separately and always wins over the agent; the agent is
+told not to repeat it. `act_text` is still set (from the first operation
+carrying new `text`, or from a plain re-read of the action-only crop when the
+engine has no `interpret()`) so older consumers keep working.
+
+Blank capture rows (`CP-*`, `P01-C*`) carry no printed text: their whole
+action area is the write-in region, measured with the slot thresholds and
+transcribed only when there is ink. They come back with `inked` and, if
+written on, `act_text` — plus whatever the gutter says, on the Inbox page.
 
 ## Project structure
 
