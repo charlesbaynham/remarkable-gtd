@@ -60,7 +60,7 @@ def manifest(rendered_sheet) -> dict:
 
 def rasterize_page(pdf_path: Path, page_index: int, dpi: int = 226) -> np.ndarray:
     """Rasterize one PDF page to an RGB uint8 ndarray via PyMuPDF."""
-    import fitz
+    import pymupdf as fitz
 
     doc = fitz.open(pdf_path)
     pix = doc[page_index].get_pixmap(dpi=dpi)

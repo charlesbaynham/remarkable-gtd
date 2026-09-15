@@ -44,20 +44,18 @@ def collect_rois(page) -> dict:
     return page.evaluate(_COLLECT_JS)
 
 
-def write_manifest(
+def build_manifest(
     buckets_rois: list[dict],
     the_date: date,
     page_w_mm: float,
-    out_path: Path,
-) -> None:
-    """Write the manifest JSON sidecar file.
+) -> dict:
+    """Assemble the manifest document (schema ``gtd.manifest/1``).
 
     Args:
         buckets_rois: List of per-bucket dicts with keys:
             ``key``, ``bucket``, ``page_no``, ``render`` (w_px/h_px), ``rois``.
         the_date: The sheet date (used as the top-level ``date`` field).
         page_w_mm: Physical page width in mm (157.8 for reMarkable 2).
-        out_path: Destination path for the JSON file.
     """
     pages: dict = {}
     for entry in buckets_rois:
@@ -67,12 +65,21 @@ def write_manifest(
             "render": entry["render"],
             "rois": entry["rois"],
         }
-
-    manifest = {
+    return {
         "schema": MANIFEST_SCHEMA,
         "date": the_date.strftime("%Y-%m-%d"),
         "page_w_mm": page_w_mm,
         "pages": pages,
     }
 
+
+def write_manifest(
+    buckets_rois: list[dict],
+    the_date: date,
+    page_w_mm: float,
+    out_path: Path,
+) -> dict:
+    """Write the manifest JSON sidecar file and return the document."""
+    manifest = build_manifest(buckets_rois, the_date, page_w_mm)
     out_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest

@@ -6,7 +6,10 @@ Usage:
 
 Reads:
   tests/fixtures/annotated_scan/gtd_sheet.rmdoc  — annotated reMarkable doc
-  tests/fixtures/annotated_scan/sheet.manifest.json — ROI manifest
+    (tests/fixtures/tasks.example.json rendered for 2026-06-02, uploaded to a
+    reMarkable 2, ticked/written on by hand, downloaded with `rmapi get`)
+  tests/fixtures/annotated_scan/sheet.manifest.json — ROI manifest, i.e.
+    `gtd-gen tests/fixtures/tasks.example.json --date 2026-06-02`
 
 Writes:
   tests/fixtures/annotated_scan/page_00.png ... page_03.png
@@ -28,7 +31,7 @@ import io
 import json
 import zipfile
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 from rmscene import SceneLineItemBlock, read_blocks
 from rmscene.scene_items import PenColor
 

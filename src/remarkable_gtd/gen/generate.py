@@ -147,7 +147,8 @@ def render_pdf(
     out_path: Path,
     debug_html: Path | None = None,
     manifest_path: Path | None = ...,  # type: ignore[assignment]
-) -> None:
+    embed_state: bool = True,
+) -> dict:
     """Render the GTD sheet to PDF and optionally write a layout manifest.
 
     Args:
@@ -157,13 +158,22 @@ def render_pdf(
         debug_html: If given, also write per-bucket HTML files for debugging.
         manifest_path: Path for the manifest JSON sidecar. Defaults to
             ``out_path.with_suffix('.manifest.json')``. Pass ``None`` to
-            suppress manifest writing.
+            suppress writing the sidecar (the manifest is still built).
+        embed_state: Attach the manifest and the tasks document (keyed by
+            the ids printed on the sheet) to the PDF as embedded files, so a
+            sheet that comes back from the device carries its own state.
+
+    Returns:
+        ``{"manifest": ..., "tasks": ...}`` — the documents that were
+        embedded (``tasks`` is the ``gtd.tasks/1`` document, see
+        :func:`remarkable_gtd.common.embedded.tasks_document`).
     """
     from playwright.sync_api import sync_playwright
     from pypdf import PdfReader, PdfWriter
 
-    from remarkable_gtd.gen.manifest import collect_rois, write_manifest
+    from remarkable_gtd.common.embedded import attach_state, tasks_document
     from remarkable_gtd.common.schema import make_page_key
+    from remarkable_gtd.gen.manifest import build_manifest, collect_rois
 
     # Resolve sentinel default
     if manifest_path is ...:  # type: ignore[comparison-overlap]
@@ -222,19 +232,18 @@ def render_pdf(
             height_mm = height_px / PX_PER_MM + HEIGHT_PAD_MM
 
             # Collect ROIs while the page is still live
-            if manifest_path is not None:
-                rois = collect_rois(page)
-                render_w = page.evaluate(
-                    "Math.round(document.querySelector('.page').getBoundingClientRect().width)"
-                )
-                page_key = make_page_key(b["key"], the_date.strftime("%Y-%m-%d"))
-                buckets_rois.append({
-                    "key": page_key,
-                    "bucket": b["key"],
-                    "page_no": b["page_no"],
-                    "render": {"w_px": render_w, "h_px": height_px},
-                    "rois": rois,
-                })
+            rois = collect_rois(page)
+            render_w = page.evaluate(
+                "Math.round(document.querySelector('.page').getBoundingClientRect().width)"
+            )
+            page_key = make_page_key(b["key"], the_date.strftime("%Y-%m-%d"))
+            buckets_rois.append({
+                "key": page_key,
+                "bucket": b["key"],
+                "page_no": b["page_no"],
+                "render": {"w_px": render_w, "h_px": height_px},
+                "rois": rois,
+            })
 
             pdf_bytes = page.pdf(
                 width=f"{PAGE_W_MM}mm",
@@ -247,8 +256,15 @@ def render_pdf(
 
         browser.close()
 
+    manifest = build_manifest(buckets_rois, the_date, PAGE_W_MM)
+    tasks = tasks_document(buckets, the_date.strftime("%Y-%m-%d"))
+    if embed_state:
+        attach_state(writer, manifest, tasks)
+
     with open(out_path, "wb") as fh:
         writer.write(fh)
 
-    if manifest_path is not None and buckets_rois:
-        write_manifest(buckets_rois, the_date, PAGE_W_MM, Path(manifest_path))
+    if manifest_path is not None:
+        Path(manifest_path).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    return {"manifest": manifest, "tasks": tasks}

@@ -7,19 +7,17 @@ on:
 
 jobs:
   scan-unit:
-    # Fast job: CV/logic tests only — no Chromium needed.
+    # Fast job: CV/logic tests (incl. the real annotated-sheet fixture) — no Chromium.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: System deps
-        run: sudo apt-get update && sudo apt-get install -y libzbar0 tesseract-ocr poppler-utils
       - name: Install
-        run: pip install -e ".[scan,dev]"
+        run: pip install -e ".[dev]"
       - name: Test (render-independent)
-        run: pytest tests/test_ink.py tests/test_decisions.py tests/test_rectify.py tests/test_qr.py -v
+        run: pytest -v --ignore=tests/test_end_to_end.py --ignore=tests/test_manifest.py
 
   full:
     # Full job: generator + manifest + end-to-end (renders with Chromium).
@@ -29,11 +27,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: System deps
-        run: sudo apt-get update && sudo apt-get install -y libzbar0 tesseract-ocr poppler-utils
       - name: Install
         run: |
-          pip install -e ".[gen,scan,dev]"
+          pip install -e ".[dev]"
           playwright install --with-deps chromium
       - name: Test (all)
         run: pytest -v

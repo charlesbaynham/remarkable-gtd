@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "remarkable-gtd"
-version = "0.1.0"
+version = "0.2.0"
 description = "GTD paper workflow for reMarkable 2 — PDF generation + machine-vision scanner"
 readme = "README.md"
 license = {text = "MIT"}
@@ -17,27 +17,27 @@ dependencies = [
     "pypdf>=4.0",
     "qrcode>=7.4",
     "opencv-python>=4.8",
-    "pyzbar>=0.1.9",
-    "pytesseract>=0.3.10",
     "PyMuPDF>=1.23",
     "rmscene>=0.4",
-    "pytest",
-    "pdf2image",
-    "python-dotenv>=1.0",
 ]
+
+[project.optional-dependencies]
+tesseract = ["pytesseract>=0.3.10"]   # offline OCR fallback; needs the tesseract binary
+zbar = ["pyzbar>=0.1.9"]              # second QR decoder; needs libzbar0
+dev = ["pytest"]
 
 [project.scripts]
 gtd-gen = "remarkable_gtd.gen.cli:main"
 gtd-scan = "remarkable_gtd.scan.cli:main"
-gtd-vault-to-tasks = "remarkable_gtd.cli.vault_to_tasks:main"
-gtd-render-annotations = "remarkable_gtd.cli.render_annotations:main"
 gtd-scan-pdf = "remarkable_gtd.cli.scan_pdf:main"
-gtd-apply-decisions = "remarkable_gtd.cli.apply_decisions:main"
-gtd-daily = "remarkable_gtd.cli.daily:main"
-gtd-process = "remarkable_gtd.cli.process:main"
+gtd-render-annotations = "remarkable_gtd.cli.render_annotations:main"
+gtd-overlay = "remarkable_gtd.cli.overlay:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 "remarkable_gtd.gen.assets" = ["*.css", "*.j2"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning"]
