@@ -47,6 +47,17 @@ def test_fit_recovers_a_known_transform():
     assert fit["x"]["rms_pt"] < 1e-6 and fit["y"]["rms_pt"] < 1e-6
 
 
+def test_pooled_fit_reports_device_width():
+    targets = cal.target_grid(620)
+    s, cx = 447.31 / 1410, 705.9
+    strokes: list[cal.Stroke] = []
+    for t in targets:
+        strokes += _traced_cross(t["x_pt"] / s - cx, t["y_pt"] / s)
+    pooled = cal.fit_pooled(cal.pair_targets(strokes, targets), 447.31)
+    assert abs(pooled["fit_width_px"] - 1410) < 0.01
+    assert abs(pooled["x_centre_px"] - cx) < 0.01 and abs(pooled["y_offset_px"]) < 0.01
+
+
 def test_untraced_targets_are_dropped():
     targets = cal.target_grid(150)
     strokes = _traced_cross(*_rm_from_pdf(targets[0]["x_pt"], targets[0]["y_pt"],

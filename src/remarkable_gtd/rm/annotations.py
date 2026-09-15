@@ -22,6 +22,15 @@ except ImportError:
     PenColor = None  # type: ignore[assignment,misc]
 
 
+# Stroke space -> page: the device lays the page width over 1410 px (not the
+# panel's 1404) with x centred on 0, y from the top, uniform scale. Measured
+# with `gtd-calibrate` on 2026-09-15 (78 targets, 4 page heights, rms 0.24 mm);
+# the nominal 72/226 was 0.42% too large and put ink 2.6 mm low at the foot of
+# a 620 mm page.
+RM_FIT_WIDTH_PX = 1410.0
+RM_X_CENTRE_PX = 705.9
+
+
 def _check_deps() -> None:
     if fitz is None:
         raise ImportError(
@@ -111,14 +120,7 @@ def render_annotations(
     """Render annotation lines onto a specific PDF page."""
     _check_deps()
     page = doc[page_index]
-
-    # reMarkable 2 dimensions in pixels
-    rm_width = 1404
-    rm_height = 1872
-
-    # reMarkable 2: 1404x1872 px at 226 DPI. PDF points = px * 72/DPI.
-    # Uniform scale — rmc reference exporter uses xx=yy=scale with no per-axis offset.
-    scale = 72.0 / 226  # ≈ 0.3186
+    scale = page.rect.width / RM_FIT_WIDTH_PX
 
     for line in lines:
         color = _color_for_pen(line.color)
@@ -126,15 +128,7 @@ def render_annotations(
         if len(points) < 2:
             continue
 
-        fitz_points = []
-        for p in points:
-            # x is centered around 0 (range approx [-702, +702]); shift to PDF
-            # coordinates (0-origin) before scaling.
-            x = (p.x + rm_width / 2) * scale
-            # y needs no offset before scaling — confirmed by rmc exporter (yy=scale)
-            # and empirical test mapping lines to correct task rows.
-            y = p.y * scale
-            fitz_points.append((x, y))
+        fitz_points = [((p.x + RM_X_CENTRE_PX) * scale, p.y * scale) for p in points]
 
         shape = page.new_shape()
         shape.draw_polyline(fitz_points)

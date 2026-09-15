@@ -150,6 +150,24 @@ def fit_page(pairs: list[dict], width_pt: float) -> dict:
     }
 
 
+def fit_pooled(pairs: list[dict], width_pt: float) -> dict:
+    """One model for every page: ``x = s * (x_rm + cx)``, ``y = s * y_rm + dy``
+    with a single scale shared by both axes and all pages (the device fits the
+    page width, so the scale is reported as the width in device px it implies)."""
+    import numpy as np
+
+    rows, rhs = [], []
+    for p in pairs:
+        rows += [[p["x_rm"], 1.0, 0.0], [p["y_rm"], 0.0, 1.0]]
+        rhs += [p["x_pt"], p["y_pt"]]
+    a = np.array(rows)
+    (s, bx, dy), *_ = np.linalg.lstsq(a, np.array(rhs), rcond=None)
+    resid = a @ np.array([s, bx, dy]) - np.array(rhs)
+    return {"n": len(pairs), "scale": float(s), "fit_width_px": float(width_pt / s),
+            "x_centre_px": float(bx / s), "y_offset_px": float(dy / s),
+            "rms_pt": float(np.sqrt((resid ** 2).mean())), "max_pt": float(abs(resid).max())}
+
+
 def strokes_from_rm(rm_bytes: bytes) -> list[Stroke]:
     from remarkable_gtd.rm.annotations import parse_annotations
 
@@ -178,12 +196,24 @@ def fit_rmdoc(rmdoc: Path) -> list[dict]:
             entry["fit"] = fit_page(pairs, page["width_pt"])
             entry["pairs"] = pairs
         results.append(entry)
+    pooled = [p for r in results for p in r.get("pairs", [])]
+    if len(pooled) >= 3:
+        results.append({"pooled": fit_pooled(pooled, spec["pages"][0]["width_pt"])})
     return results
 
 
 def _report(results: list[dict]) -> str:
     lines = []
     for r in results:
+        if "pooled" in r:
+            f = r["pooled"]
+            lines.append(
+                f"all pages ({f['n']} targets): scale {f['scale']:.6f} pt/px = page width / {f['fit_width_px']:.1f} px, "
+                f"x centre {f['x_centre_px']:+.1f} px, y offset {f['y_offset_px']:+.1f} px, "
+                f"rms {f['rms_pt']:.2f} pt, max {f['max_pt']:.2f} pt"
+            )
+            lines.append(f"  -> annotations.py: RM_FIT_WIDTH_PX = {f['fit_width_px']:.1f}, RM_X_CENTRE_PX = {f['x_centre_px']:.1f}")
+            continue
         head = f"page {r['page_no']} ({r['height_mm']} mm): {r['strokes']} strokes, {r['paired']}/{r['targets']} targets paired"
         if "fit" not in r:
             lines.append(head + " — not enough to fit")
@@ -222,7 +252,7 @@ def main(argv=None) -> int:
     print(_report(results))
     if args.json:
         Path(args.json).write_text(json.dumps(results, indent=2), encoding="utf-8")
-    return 0 if all("fit" in r for r in results) else 1
+    return 0 if all("fit" in r for r in results if "pooled" not in r) else 1
 
 
 if __name__ == "__main__":
