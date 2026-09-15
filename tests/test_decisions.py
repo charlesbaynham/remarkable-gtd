@@ -120,8 +120,12 @@ def test_fields_and_act_text_passthrough():
 def test_edit_passthrough():
     edit = {
         "handwriting": "Tell Louise I pulled out", "understood": True, "confidence": 0.9,
-        "route": "keep", "text": "Tell Louise I pulled out", "priority": None, "due": None,
-        "project": None, "person": None, "note": "struck through and rewritten",
+        "note": "struck through and rewritten",
+        "operations": [{
+            "op": "update", "text": "Tell Louise I pulled out", "priority": None,
+            "due": None, "project": None, "person": None, "to": None,
+            "period": None, "name": None, "goal": None,
+        }],
     }
     entry, _ = resolve_task(
         "NA-06",
@@ -140,6 +144,50 @@ def test_edit_absent_by_default():
         "next",
     )
     assert "edit" not in entry
+
+
+def test_new_project_flag_is_orthogonal():
+    entry, warnings = resolve_task(
+        "NA-01",
+        ticks(done=False, to_deleg=False, edit=False, new_project=True),
+        "next",
+        field_texts={"project": {"text": "Wedding 2026", "fill": 0.08}},
+    )
+    assert entry["new_project"] is True
+    # It is a flag, never an action, and never a conflict.
+    assert entry["action"] == "none"
+    assert warnings == []
+
+
+def test_new_project_defaults_false():
+    entry, _ = resolve_task("NA-01", ticks(done=True), "next")
+    assert entry["new_project"] is False
+
+
+def test_capture_bucket_uses_inbox_verbs():
+    from remarkable_gtd.scan.decisions import BUCKET_ACTIONS
+
+    assert BUCKET_ACTIONS["capture"] == BUCKET_ACTIONS["inbox"]
+    entry, _ = resolve_task(
+        "CP-01",
+        ticks(to_next=True, to_deleg=False, drop=False),
+        "capture",
+        act_text="Buy a new kettle",
+    )
+    assert entry["action"] == "to_next"
+    assert entry["act_text"] == "Buy a new kettle"
+
+
+def test_project_bucket_only_completes():
+    entry, _ = resolve_task(
+        "P01-03", ticks(done=True, edit=False), "project",
+    )
+    assert entry["action"] == "done"
+    entry, warnings = resolve_task(
+        "P01-03", ticks(done=False, edit=True), "project",
+    )
+    assert entry["action"] == "none" and entry["edited"] is True
+    assert warnings == []
 
 
 def test_build_decisions_shape():

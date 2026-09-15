@@ -20,6 +20,7 @@ pytestmark = needs_chromium
 
 NEXT_KEY = make_page_key("next", "2026-05-30")
 INBOX_KEY = make_page_key("inbox", "2026-05-30")
+PROJ_KEY = make_page_key("project-01", "2026-05-30")
 
 
 def save_png(img, path: Path) -> Path:
@@ -39,6 +40,19 @@ def by_id(decisions: dict) -> dict:
     return {t["id"]: t for t in decisions["tasks"]}
 
 
+class RecordingEngine:
+    """Transcribes nothing: returns the hint it was given, and records it."""
+
+    name = "recording"
+
+    def __init__(self):
+        self.calls: list[tuple[str, tuple[int, int]]] = []
+
+    def read(self, image, hint=None, context=None) -> str:
+        self.calls.append((hint, image.shape[:2]))
+        return f"<{hint}>"
+
+
 class FakeEditEngine:
     """Records the crop it's asked to interpret; returns a fixed reading."""
 
@@ -56,13 +70,12 @@ class FakeEditEngine:
             "handwriting": "Amended",
             "understood": True,
             "confidence": 0.95,
-            "route": "keep",
-            "text": "Amended",
-            "priority": None,
-            "due": None,
-            "project": None,
-            "person": None,
             "note": "struck through and rewritten",
+            "operations": [{
+                "op": "update", "text": "Amended", "priority": None, "due": None,
+                "project": None, "person": None, "to": None, "period": None,
+                "name": None, "goal": None,
+            }],
         }
 
 
@@ -105,7 +118,7 @@ def test_ticked_decisions_recovered(next_page_img, manifest, tmp_path):
     # NA-01's slots were untouched.
     assert "fields" not in tasks["NA-01"]
 
-    assert tasks["NA-02"]["edit"]["text"] == "Amended"
+    assert tasks["NA-02"]["edit"]["operations"][0]["op"] == "update"
     assert tasks["NA-02"]["act_text"] == "Amended"
     assert len(engine.interpret_crops) == 1
     crop_h, crop_w = engine.interpret_crops[0]
@@ -137,20 +150,98 @@ def test_page_autodetected_from_qr(next_page_img, manifest, tmp_path):
     assert decisions["bucket"] == "next"
 
 
-def test_inbox_capture_line(rendered_sheet, manifest, tmp_path):
+def test_inbox_capture_row(rendered_sheet, manifest, tasks_doc, tmp_path):
+    """A capture row is a full inbox row: write on it and tick where it goes."""
     pdf_path, _ = rendered_sheet
     img = rasterize_page(pdf_path, 0)  # inbox page
     page = manifest["pages"][INBOX_KEY]
 
-    img = paint_ink(img, page, "capture:N1:box", "tick")
+    img = paint_ink(img, page, "CP-01:act", "text:Buy a new kettle")
+    img = paint_ink(img, page, "CP-01:to_next", "tick")
     img = paint_ink(img, page, "IN-01:to_next", "tick")
     img_path = save_png(img, tmp_path / "inbox.png")
 
-    decisions = run_scan(img_path, manifest, ScanConfig(), page_key=INBOX_KEY)
+    engine = RecordingEngine()
+    decisions = run_scan(
+        img_path, manifest, ScanConfig(ocr_engine=engine),
+        page_key=INBOX_KEY, tasks=tasks_doc,
+    )
 
     tasks = by_id(decisions)
     assert tasks["IN-01"]["action"] == "to_next"
 
-    captures = {c["line"]: c for c in decisions["captures"]}
-    assert captures["N1"]["inked"] is True
-    assert all(not c["inked"] for line, c in captures.items() if line != "N1")
+    written = tasks["CP-01"]
+    assert written["inked"] is True
+    assert written["action"] == "to_next"           # capture uses the inbox verbs
+    assert written["act_text"] == "<capture>"       # OCR'd with the capture hint
+    assert "capture" in {hint for hint, _ in engine.calls}
+
+    # Every other capture row was left blank: no ink, no OCR, no action.
+    blanks = [tasks[f"CP-{i:02d}"] for i in range(2, 7)]
+    assert all(t["inked"] is False for t in blanks)
+    assert all(t["action"] == "none" for t in blanks)
+    assert all("act_text" not in t for t in blanks)
+    # The legacy capture list is empty on a modern sheet.
+    assert decisions["captures"] == []
+
+
+def test_new_project_box_is_recovered(next_page_img, manifest, tasks_doc, tmp_path):
+    page = manifest["pages"][NEXT_KEY]
+    img = paint_ink(next_page_img, page, "NA-01:new_project", "tick")
+    img = paint_ink(img, page, "NA-01:slot_project", "text:Kitchen")
+    img_path = save_png(img, tmp_path / "newproj.png")
+
+    decisions = run_scan(
+        img_path, manifest, ScanConfig(), page_key=NEXT_KEY, tasks=tasks_doc
+    )
+    tasks = by_id(decisions)
+    assert tasks["NA-01"]["new_project"] is True
+    assert "project" in tasks["NA-01"]["fields"]
+    # It is a flag, not an action, and it does not leak to other rows.
+    assert tasks["NA-01"]["action"] == "none"
+    assert tasks["NA-02"]["new_project"] is False
+
+
+def test_project_page_item_ticked_done(rendered_sheet, manifest, tasks_doc, tmp_path):
+    pdf_path, _ = rendered_sheet
+    page_no = manifest["pages"][PROJ_KEY]["page_no"]
+    img = rasterize_page(pdf_path, page_no - 1)
+    page = manifest["pages"][PROJ_KEY]
+
+    img = paint_ink(img, page, "P01-02:done", "tick")
+    img = paint_ink(img, page, "P01-C1:act", "text:Chase the finance office")
+    img_path = save_png(img, tmp_path / "project.png")
+
+    engine = RecordingEngine()
+    decisions = run_scan(
+        img_path, manifest, ScanConfig(ocr_engine=engine),
+        page_key=PROJ_KEY, tasks=tasks_doc,
+    )
+    tasks = by_id(decisions)
+
+    assert decisions["bucket"] == "project"
+    assert tasks["P01-02"]["action"] == "done"
+    assert tasks["P01-02"]["edited"] is False
+    assert tasks["P01-03"]["action"] == "none"
+    # The add-an-action line was written on: transcribed, but no gutter to tick.
+    assert tasks["P01-C1"]["inked"] is True
+    assert tasks["P01-C1"]["act_text"] == "<capture>"
+    assert tasks["P01-C1"]["action"] == "none"
+    assert all(tasks[f"P01-C{i}"]["inked"] is False for i in (2, 3, 4))
+
+
+def test_summary_page_is_skipped_by_the_scanner(rendered_sheet, manifest, tasks_doc, tmp_path):
+    from remarkable_gtd.scan.sheet import scan_pdf, summarize
+
+    pdf_path, _ = rendered_sheet
+    decisions = scan_pdf(
+        pdf_path, manifest, ScanConfig(), work_dir=tmp_path, tasks=tasks_doc
+    )
+    by_key = {p["page_key"]: p for p in decisions["pages"]}
+    summary = by_key[make_page_key("projects", "2026-05-30")]
+    assert summary["skipped"] is True
+    assert "tasks" not in summary
+
+    proj = by_key[PROJ_KEY]
+    assert proj["project"] == {"index": 1, "name": "EPSRC proposal"}
+    assert summarize(decisions)["skipped"] == 1

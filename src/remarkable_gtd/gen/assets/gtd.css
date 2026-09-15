@@ -139,21 +139,61 @@ html, body {
 .fld .cur { font-weight: 600; }
 .fld .cur.tag { border: 0.4mm solid var(--ink); padding: 0.2mm 1.4mm; font-family: 'IBM Plex Mono', monospace; font-size: 7pt; }
 .fld .arr { font-weight: 700; font-size: 8pt; }
-.fld .slot { border: var(--pen-box); height: 5mm; }
-.fld .slot.n { width: 6mm; }
-.fld .slot.s { width: 14mm; }
-.fld .slot.m { width: 26mm; }
+/* Write-in slots are sized for a stylus, not a pen: 8 mm of height and
+   generous width so a digit, a date or a project name is written inside
+   the box rather than over its border. Deliberately much larger than the
+   printed labels need — the scanner only measures fill, and a single
+   handwritten digit in a 10x8 mm box still covers ~6 % of its area, well
+   above ScanConfig.slot_fill_threshold (0.03), so the OCR trigger is
+   unaffected by the extra white space. */
+.fld .slot { border: var(--pen-box); height: 8mm; }
+.fld .slot.n { width: 10mm; }
+.fld .slot.s { width: 24mm; }
+.fld .slot.m { width: 44mm; }
 .fld .slot.l { width: 38mm; }
-.fld .slot.to { width: 42mm; height: 7mm; }   /* names need room to write */
+.fld .slot.to { width: 48mm; height: 8mm; }   /* names need room to write */
+
+/* NEW-project tick box that follows the Project slot: tick it to say the
+   project written in that slot does not exist yet and should be created. */
+.fld .newbox { display: flex; flex-direction: column; align-items: center; gap: 0.6mm; margin-left: 0.6mm; }
+.fld .newbox .box { width: 5mm; height: 5mm; border: var(--pen-box); }
+.fld .newbox .cl { font-size: 5.6pt; font-weight: 600; text-transform: uppercase; }
 .fld.prominent .fl { font-size: 7pt; }
 .fld.prominent .cur { font-size: 10pt; }
 
-/* inbox capture: numbered blank lines for new freeform items */
-.capture { margin-top: 4mm; }
-.capture .ct { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2.5mm; }
-.cap-line { display: flex; align-items: flex-end; gap: 3mm; height: 11mm; border-bottom: var(--pen-thin); padding-bottom: 1mm; }
-.cap-line .cn { font-size: 7pt; font-weight: 600; font-family: 'IBM Plex Mono', monospace; align-self: flex-start; margin-top: 1mm; }
-.cap-line .cbx { width: 5mm; height: 5mm; border: var(--pen-box); flex: none; align-self: flex-start; margin-top: 0.5mm; }
+/* capture rows: a full row whose action text is a ruled blank write-in
+   area instead of printed text (inbox page and the foot of each project
+   page). The rule sits at the bottom so handwriting lands above it. */
+.act.cap { height: 12mm; border-bottom: var(--pen-thin); }
+.cap-head {
+  font-size: 7.5pt; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-top: 4mm; margin-bottom: 1mm;
+}
+
+/* ---------- PROJECT PAGES ---------- */
+.proj-block { border-bottom: var(--pen); padding: 2.6mm 0 2.8mm; }
+.proj-block .pname { font-size: 12pt; font-weight: 700; line-height: 1.2; }
+.proj-block .pgoal { font-size: 8.5pt; font-weight: 500; margin-top: 0.8mm; }
+.proj-block .pmeta { display: flex; align-items: center; gap: 3mm; margin-top: 1.4mm; font-size: 7.5pt; }
+.proj-block .pna { font-size: 9pt; font-weight: 600; margin-top: 1.4mm; }
+.proj-block .pna .pl { font-size: 6.4pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 1.6mm; }
+.badge {
+  border: 0.4mm solid var(--ink); padding: 0.2mm 1.4mm;
+  font-family: 'IBM Plex Mono', monospace; font-size: 6.6pt; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.badge.stalled { background: var(--ink); color: var(--paper); }
+/* a project page's tag is "P01", not a single digit */
+.page[data-bucket^="project-"] .head-tag { font-size: 11pt; letter-spacing: -0.02em; }
+.proj-head { margin-top: 1mm; }
+.proj-head .pgoal { font-size: 9.5pt; font-weight: 500; }
+.proj-head .pstatus { font-size: 8pt; margin-top: 1.4mm; }
+.proj-head .pstatus div { margin-top: 0.6mm; }
+.backlink {
+  display: inline-block; border: var(--pen-box); padding: 1mm 2.4mm;
+  font-size: 7.5pt; font-weight: 700; margin-top: 2mm;
+}
+.row .done-item { font-size: 9.5pt; text-decoration: line-through; padding: 1.2mm 0 1.2mm 15.5mm; }
 
 /* tickler subsection band */
 .band {

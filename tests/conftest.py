@@ -52,6 +52,16 @@ def rendered_sheet(tmp_path_factory, tasks_min):
 
 
 @pytest.fixture(scope="session")
+def tasks_doc(rendered_sheet) -> dict:
+    """The ``gtd.tasks/1`` document embedded in the rendered sheet."""
+    from remarkable_gtd.common.embedded import read_state
+
+    _manifest, tasks = read_state(rendered_sheet[0].read_bytes())
+    assert tasks is not None
+    return tasks
+
+
+@pytest.fixture(scope="session")
 def manifest(rendered_sheet) -> dict:
     from remarkable_gtd.scan.manifest_io import load_manifest
 

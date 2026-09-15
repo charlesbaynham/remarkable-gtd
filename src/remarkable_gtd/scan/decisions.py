@@ -3,7 +3,8 @@
 A task's gutter may have several inked boxes; precedence resolves them to a
 single ``action`` and conflicts are surfaced as warnings rather than
 silently dropped. ``edit`` is an orthogonal annotation flag ("re-read this
-row"), never a primary action. Raw fill ratios are retained under
+row"), never a primary action; so is ``new_project`` ("the project named
+next to this row does not exist yet — create it"). Raw fill ratios are retained under
 ``ticks`` so a human or downstream agent can audit ambiguous rows.
 """
 from __future__ import annotations
@@ -17,7 +18,13 @@ BUCKET_ACTIONS = {
     "next": ["done", "to_deleg"],
     "delegated": ["done", "to_me"],
     "tickler": ["activate", "done"],
+    # An unchecked item printed on its own project page: tick it off, or
+    # annotate it with ✎ Edit.
+    "project": ["done"],
 }
+# A blank capture row on the Inbox page carries the Inbox gutter, so the
+# same verbs apply to whatever gets written on it.
+BUCKET_ACTIONS["capture"] = BUCKET_ACTIONS["inbox"]
 
 DEFER_KEYS = ["defer_1w", "defer_1m", "defer_1q"]
 REDEFER_KEYS = ["redefer_1w", "redefer_1m", "redefer_1q"]
@@ -45,7 +52,9 @@ def resolve_task(
         task_id: Stable task id (e.g. ``"NA-05"``).
         ticks: Mapping of verb -> ``(fill_ratio, inked)`` for every gutter
             box of this task (including defer trio and edit).
-        bucket: Bucket key (``inbox``/``next``/``delegated``/``tickler``).
+        bucket: Bucket key (``inbox``/``next``/``delegated``/``tickler``/
+            ``project``/``capture``) — the task's own bucket, which on the
+            Inbox page is ``capture`` for the blank write-in rows.
         field_texts: Optional ``{field: {"text": ..., ...}}`` of OCR'd slots.
         act_text: Optional OCR of the action region (when edit is ticked).
         edit: Optional structured reading of the whole annotated row
@@ -88,11 +97,13 @@ def resolve_task(
             )
 
     edited = ticks.get("edit", (0, False))[1]
+    new_project = ticks.get("new_project", (0, False))[1]
 
     entry: dict = {
         "id": task_id,
         "action": action,
         "edited": edited,
+        "new_project": new_project,
         "ticks": {
             verb: {"inked": inked, "fill": round(fill, 4)}
             for verb, (fill, inked) in sorted(ticks.items())

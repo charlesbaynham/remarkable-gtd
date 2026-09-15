@@ -53,18 +53,24 @@ def build_manifest(
 
     Args:
         buckets_rois: List of per-bucket dicts with keys:
-            ``key``, ``bucket``, ``page_no``, ``render`` (w_px/h_px), ``rois``.
+            ``key``, ``bucket``, ``page_no``, ``render`` (w_px/h_px), ``rois``,
+            and optionally ``scan`` (False for a read-only page the scanner
+            skips) and ``project`` (``{index, name}`` on a project page).
         the_date: The sheet date (used as the top-level ``date`` field).
         page_w_mm: Physical page width in mm (157.8 for reMarkable 2).
     """
     pages: dict = {}
     for entry in buckets_rois:
-        pages[entry["key"]] = {
+        page: dict = {
             "bucket": entry["bucket"],
             "page_no": entry["page_no"],
             "render": entry["render"],
+            "scan": bool(entry.get("scan", True)),
             "rois": entry["rois"],
         }
+        if entry.get("project"):
+            page["project"] = entry["project"]
+        pages[entry["key"]] = page
     return {
         "schema": MANIFEST_SCHEMA,
         "date": the_date.strftime("%Y-%m-%d"),
