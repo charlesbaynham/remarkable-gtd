@@ -101,6 +101,26 @@ manifest problem from a registration problem.
 gtd-render-annotations sheet.rmdoc annotated.pdf
 ```
 
+### Calibrate the stroke transform
+
+```bash
+gtd-calibrate make --out gtd_calibration.pdf      # crosses at known positions, 4 page heights
+rmapi put gtd_calibration.pdf "GTD Daily/Calibration"
+#   ...trace every cross on the device, then:
+rmapi get "GTD Daily/Calibration/gtd_calibration"
+gtd-calibrate fit gtd_calibration.rmdoc
+```
+
+`fit` pairs each traced cross with its printed position and reports the
+stroke→page transform per page and pooled, ending with the two constants
+`rm/annotations.py` uses (`RM_FIT_WIDTH_PX`, `RM_X_CENTRE_PX`). Measured
+2026-09-15: the device lays the page width over **1410 px** (not the panel's
+1404) with x centred at 705.9 px, uniform on both axes, no dependence on page
+height, rms 0.24 mm over 78 targets. The nominal 72/226 was 0.42 % too large,
+which put ink 2.6 mm low at the foot of a 620 mm page — enough to push a name
+written in a TO box out of its slot. Re-run this if a firmware update moves
+the ticks.
+
 ## Decisions JSON (`gtd.decisions/1`)
 
 ```json

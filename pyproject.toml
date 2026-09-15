@@ -32,6 +32,7 @@ gtd-scan = "remarkable_gtd.scan.cli:main"
 gtd-scan-pdf = "remarkable_gtd.cli.scan_pdf:main"
 gtd-render-annotations = "remarkable_gtd.cli.render_annotations:main"
 gtd-overlay = "remarkable_gtd.cli.overlay:main"
+gtd-calibrate = "remarkable_gtd.cli.calibrate:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

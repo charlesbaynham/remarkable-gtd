@@ -63,7 +63,8 @@ gtd-overlay today.pdf -o overlay/                  # ROI boxes drawn on each pag
 ### reMarkable I/O (`src/remarkable_gtd/rm/`)
 
 - `api.py` — thin wrapper over the `rmapi` binary (ddvk fork): `list_sheets`, `download` (`rmapi get` → `.rmdoc`), `upload`, `move`, `mkdir`; `write_config_from_env()` builds rmapi's config from `RMAPI_DEVICE_TOKEN` for headless runs.
-- `annotations.py` — unpacks an `.rmdoc`, parses v6 strokes with `rmscene`, draws them onto the original PDF with PyMuPDF. Coordinate transform: x is centred on 0 (shift by +702), y is 0-based, uniform scale 72/226.
+- `annotations.py` — unpacks an `.rmdoc`, parses v6 strokes with `rmscene`, draws them onto the original PDF with PyMuPDF. Coordinate transform (calibrated 2026-09-15 with `gtd-calibrate`, see README): scale = page width / 1410 px, x shifted by +705.9 px, y 0-based, uniform. Not 72/226 and not 1404 — that was 0.42 % off and put ink 2.6 mm low at the foot of a tall page.
+- `cli/calibrate.py` — `gtd-calibrate make` (target document) / `fit` (recover the transform from the traced `.rmdoc`).
 
 ### Key design decisions
 
