@@ -32,6 +32,7 @@ gtd-scan-pdf sheet.rmdoc --ocr openrouter -o decisions.json      # manifest read
 gtd-scan-pdf annotated.pdf --manifest today.manifest.json -o decisions.json
 gtd-scan page.png --manifest today.manifest.json -o decisions.json
 gtd-render-annotations sheet.rmdoc annotated.pdf
+gtd-overlay today.pdf -o overlay/                  # ROI boxes drawn on each page, for eyeballing alignment
 ```
 
 ## Architecture
@@ -54,6 +55,10 @@ gtd-render-annotations sheet.rmdoc annotated.pdf
 5. **Ink detection** (`ink.py`) — `detect_box()` crops the ROI from the rectified binary, insets by `inner_inset_frac` (0.22 for tick boxes, 0.15 for slots) to exclude the printed border, and measures dark-pixel fill ratio. Tick threshold 0.06, slot/capture threshold 0.03.
 6. **Handwriting** (`ocr.py`) — `OcrEngine` Protocol `read(image, hint, context)`. `OpenRouterEngine` (default in production; `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`), `TesseractEngine`, `NullEngine` (tests). Invoked only where ink is present, on a tight crop, with a hint naming the region (`priority`/`due`/`project`/`to`/`capture`/`act`) and, for an amended action, the printed text as context.
 7. **Decisions** (`decisions.py`) — `resolve_task()` maps ticked verbs to a single `action` per task using bucket-specific precedence (`done > activate > to_next > to_me > to_deleg > drop > defer`). `edited` flag is orthogonal. Conflict warnings are emitted when multiple boxes are ticked.
+
+### Debugging
+
+`scan/overlay.py` / `gtd-overlay` draw every manifest ROI onto the rasterised (and by default rectified) page. Run it on any generated PDF, `.rmdoc` or page image first when ticks are misread: if the boxes are off, the manifest and the sheet do not belong together.
 
 ### reMarkable I/O (`src/remarkable_gtd/rm/`)
 

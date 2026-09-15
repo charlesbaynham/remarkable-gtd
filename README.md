@@ -82,6 +82,19 @@ Handwriting engines (`--ocr`): `openrouter` (needs `OPENROUTER_API_KEY`;
 `OPENROUTER_MODEL` picks the model, default Google Gemini Flash),
 `tesseract`, or `null` (flag inked regions, transcribe nothing).
 
+### Check alignment by eye
+
+```bash
+gtd-overlay today.pdf -o overlay/          # manifest from the PDF; rectified like a real scan
+gtd-overlay sheet.rmdoc -o overlay/         # strokes rendered first
+gtd-overlay page.png --manifest m.json --raw --labels
+```
+
+Writes one PNG per page with every manifest region outlined (blue tick
+boxes with their measured inner area, red write-in slots, green QRs,
+magenta registration marks). `--raw` skips rectification, which separates a
+manifest problem from a registration problem.
+
 ### Render annotations only
 
 ```bash
