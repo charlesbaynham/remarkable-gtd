@@ -100,7 +100,9 @@ def decode_region(
 ) -> str | None:
     """Decode a QR code from a specific ROI in a rectified image.
 
-    Tries OpenCV then pyzbar on the cropped region (with a small margin).
+    The crop is widened progressively (a QR needs a quiet zone around it,
+    and the header QR sits close to other print) and upscaled when small;
+    OpenCV is tried first, then pyzbar if it is installed.
 
     Args:
         img: Full rectified image (grayscale or BGR).
@@ -113,29 +115,32 @@ def decode_region(
     import cv2
 
     canvas_w, canvas_h = canvas_size
-    # Add 20% margin around the ROI for robustness
-    margin_x = roi["w"] * canvas_w * 0.2
-    margin_y = roi["h"] * canvas_h * 0.2
-
-    x1 = max(0, int(roi["x"] * canvas_w - margin_x))
-    y1 = max(0, int(roi["y"] * canvas_h - margin_y))
-    x2 = min(canvas_w, int((roi["x"] + roi["w"]) * canvas_w + margin_x))
-    y2 = min(canvas_h, int((roi["y"] + roi["h"]) * canvas_h + margin_y))
-
-    crop = img[y1:y2, x1:x2]
-    if crop.size == 0:
-        return None
-
-    # Upscale small crops for better detection
-    h, w = crop.shape[:2]
-    if max(h, w) < 100:
-        scale = 150 / max(h, w)
-        crop = cv2.resize(crop, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
-
-    for backend in (OpenCVBackend(), PyzbarBackend()):
-        results = backend.decode_all(crop)
-        if results:
-            return results[0][0]
+    backends = (OpenCVBackend(), PyzbarBackend())
+    for margin in (0.2, 0.5, 1.0):
+        margin_x = roi["w"] * canvas_w * margin
+        margin_y = roi["h"] * canvas_h * margin
+        x1 = max(0, int(roi["x"] * canvas_w - margin_x))
+        y1 = max(0, int(roi["y"] * canvas_h - margin_y))
+        x2 = min(canvas_w, int((roi["x"] + roi["w"]) * canvas_w + margin_x))
+        y2 = min(canvas_h, int((roi["y"] + roi["h"]) * canvas_h + margin_y))
+        crop = img[y1:y2, x1:x2]
+        if crop.size == 0:
+            continue
+        h, w = crop.shape[:2]
+        scales = [1.0]
+        if max(h, w) < 150:
+            scales.append(150 / max(h, w))
+        scales.append(2.0)
+        for scale in scales:
+            c = crop
+            if scale != 1.0:
+                c = cv2.resize(
+                    crop, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC
+                )
+            for backend in backends:
+                results = backend.decode_all(c)
+                if results:
+                    return results[0][0]
     return None
 
 

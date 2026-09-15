@@ -3,8 +3,8 @@
 The manifest produced by the generator is the source of truth for *where*
 every box lives; the pipeline rectifies the photo into the manifest's
 normalized frame (via the four corner registration marks) and then samples
-ink at exact rectangles. OCR runs only where ink is present in a write-in
-region.
+ink at exact rectangles. Handwriting recognition runs only where ink is
+present in a write-in region, on a tight crop of that region.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from remarkable_gtd.scan import ink as ink_mod
 from remarkable_gtd.scan import qr as qr_mod
 from remarkable_gtd.scan.decisions import build_decisions, resolve_task
 from remarkable_gtd.scan.manifest_io import get_page, list_page_keys
-from remarkable_gtd.scan.ocr import get_engine
+from remarkable_gtd.scan.ocr import OcrEngine, get_engine
 from remarkable_gtd.scan.rectify import find_reg_marks, rectify
 
 
@@ -27,11 +27,11 @@ class ScanConfig:
     """Tunables for the scan pipeline."""
 
     ink_fill_threshold: float = 0.06   # tick boxes
-    slot_fill_threshold: float = 0.02  # write-in slots / capture lines (OCR trigger)
+    slot_fill_threshold: float = 0.03  # write-in slots / capture lines (OCR trigger)
     inner_inset_frac: float = 0.22     # excludes the printed box border (tick boxes)
-    slot_inset_frac: float = 0.08      # slots are wide; border is only ~3px,
-                                       # and handwriting often starts at the edge
-    ocr_engine: str = "null"
+    slot_inset_frac: float = 0.15      # slots are wide; the border is only ~3px but
+                                       # a 1px scale mismatch would leak it in
+    ocr_engine: str | OcrEngine = "null"  # engine name, or an engine instance
     canvas_width: int = 1404           # reMarkable 2 panel width in px
 
 
@@ -51,10 +51,10 @@ def load_image(image_path: Path) -> tuple[np.ndarray, np.ndarray]:
 
     image_path = Path(image_path)
     if image_path.suffix.lower() == ".pdf":
-        import fitz  # PyMuPDF
+        import pymupdf
 
-        doc = fitz.open(image_path)
-        pix = doc[0].get_pixmap(dpi=226, colorspace=fitz.csGRAY)
+        doc = pymupdf.open(image_path)
+        pix = doc[0].get_pixmap(dpi=226, colorspace=pymupdf.csGRAY)
         gray = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width)
         gray = gray.copy()
         doc.close()
@@ -106,6 +106,7 @@ def run_scan(
     manifest: dict,
     cfg: ScanConfig | None = None,
     page_key: str | None = None,
+    task_texts: dict[str, str] | None = None,
 ) -> dict:
     """Run the full pipeline on one sheet image.
 
@@ -116,6 +117,8 @@ def run_scan(
         page_key: Manifest page key (e.g. ``"GTD|next|2026-05-30"``). If
             omitted: auto-selected when the manifest has one page, else
             detected from QR codes in the image.
+        task_texts: Optional ``{task_id: printed action text}``; given to
+            the OCR engine as context when a row's Edit box is ticked.
 
     Returns:
         The decisions document (schema ``gtd.decisions/1``).
@@ -125,6 +128,7 @@ def run_scan(
         RegistrationError: If the corner marks cannot be found.
     """
     cfg = cfg or ScanConfig()
+    task_texts = task_texts or {}
     image_path = Path(image_path)
     gray, binary = load_image(image_path)
 
@@ -173,17 +177,15 @@ def run_scan(
 
     ocr = get_engine(cfg.ocr_engine)
 
-    def ocr_crop(roi: dict, hint: str, inset_frac: float = 0.0) -> str:
-        """OCR a region; inset bordered regions so the printed box stroke
-        doesn't get read as a character (e.g. '|')."""
+    def ocr_crop(roi: dict, hint: str, inset_px: int = 3, context: str | None = None) -> str:
+        """Transcribe a region: crop just inside the printed border so the
+        box stroke is not read as a character, and hand the engine a hint
+        about what the region is."""
         x1, y1, x2, y2 = ink_mod.roi_to_pixels(roi, canvas)
-        if inset_frac > 0:
-            ix = max(2, int((x2 - x1) * inset_frac))
-            iy = max(2, int((y2 - y1) * inset_frac))
-            x1, y1, x2, y2 = x1 + ix, y1 + iy, x2 - ix, y2 - iy
+        x1, y1, x2, y2 = x1 + inset_px, y1 + inset_px, x2 - inset_px, y2 - inset_px
         if x2 <= x1 or y2 <= y1:
             return ""
-        return ocr.read(warped_gray[y1:y2, x1:x2], hint=hint)
+        return ocr.read(warped_gray[y1:y2, x1:x2], hint=hint, context=context)
 
     # ---- tasks ------------------------------------------------------------
     tasks_out: list[dict] = []
@@ -216,14 +218,16 @@ def run_scan(
             )
             if inked:
                 field_texts[field] = {
-                    "text": ocr_crop(roi, "line", inset_frac=cfg.slot_inset_frac),
+                    "text": ocr_crop(roi, field),
                     "fill": round(fill, 4),
                 }
 
         # Edit ticked: re-read the (possibly amended) action text.
         act_text = None
         if edited and "act" in t_rois:
-            act_text = ocr_crop(t_rois["act"], "block")
+            act_text = ocr_crop(
+                t_rois["act"], "act", inset_px=0, context=task_texts.get(task_id)
+            )
 
         entry, task_warnings = resolve_task(
             task_id, ticks, bucket,
@@ -274,7 +278,7 @@ def run_scan(
         inked = box_inked or write_fill > cfg.slot_fill_threshold
         text = ""
         if inked and write_roi is not None:
-            text = ocr_crop(write_roi, "line")
+            text = ocr_crop(write_roi, "capture")
 
         captures_out.append({
             "line": line_no,

@@ -9,7 +9,7 @@ from io import BytesIO
 from pathlib import Path
 
 try:
-    import fitz  # PyMuPDF
+    import pymupdf as fitz
 except ImportError:
     fitz = None  # type: ignore[assignment]
 

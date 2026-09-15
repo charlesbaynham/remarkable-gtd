@@ -24,7 +24,7 @@ def main(argv=None) -> int:
         "from QR codes if omitted (or if the manifest has one page).",
     )
     p.add_argument(
-        "--ocr", default="null", choices=["null", "tesseract"],
+        "--ocr", default="null", choices=["null", "tesseract", "openrouter"],
         help="OCR engine for handwriting regions (default: null = flag only).",
     )
     p.add_argument(
