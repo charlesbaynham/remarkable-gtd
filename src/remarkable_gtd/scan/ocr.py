@@ -106,10 +106,15 @@ _OP_SCHEMA = {
                     "description": "Existing project name this item belongs to."},
         "person": {"type": ["string", "null"],
                    "description": "Who a delegated item is waiting on."},
-        "to": {"type": ["string", "null"], "enum": [*MOVE_TARGETS, None],
-               "description": "Destination list for op=move."},
-        "period": {"type": ["string", "null"], "enum": [*TICKLER_PERIODS, None],
-                   "description": "Tickler bucket for op=move to=tickler or add_to_tickler."},
+        # No enum on the nullable fields: some providers reject a null inside
+        # an enum under strict mode, so the allowed values are described and
+        # checked in Python instead.
+        "to": {"type": ["string", "null"],
+               "description": "Destination list for op=move: one of "
+                              + ", ".join(MOVE_TARGETS) + "."},
+        "period": {"type": ["string", "null"],
+                   "description": "Tickler bucket for op=move to=tickler or "
+                                  "add_to_tickler: one of " + ", ".join(TICKLER_PERIODS) + "."},
         "name": {"type": ["string", "null"],
                  "description": "Project name for op=create_project / add_project_action."},
         "goal": {"type": ["string", "null"],

@@ -151,8 +151,10 @@ def test_edit_schema_is_v2_flat_operations():
     assert "oneOf" not in json.dumps(op) and "anyOf" not in json.dumps(op)
     assert op["properties"]["op"]["enum"] == list(ocr.OPS)
     assert "create_project" in ocr.OPS and "add_project_action" in ocr.OPS
-    assert op["properties"]["to"]["enum"] == [*ocr.MOVE_TARGETS, None]
-    assert op["properties"]["period"]["enum"] == [*ocr.TICKLER_PERIODS, None]
+    # nullable fields carry no enum (strict-mode providers reject null in one)
+    assert "enum" not in op["properties"]["to"]
+    assert all(t in op["properties"]["to"]["description"] for t in ocr.MOVE_TARGETS)
+    assert "enum" not in op["properties"]["period"]
     # Every non-op key is nullable.
     for key, spec in op["properties"].items():
         if key == "op":
