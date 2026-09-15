@@ -48,8 +48,14 @@ def tasks_document(buckets: list[dict], the_date: str, context: dict | None = No
 
     Every item keeps the fields it was given (``act``, ``pri``, ``due``,
     ``proj``, ``to`` and any caller extras such as a vault ``handle``) plus
-    ``bucket`` (``inbox``/``next``/``delegated``/``tickler``) and, for
-    tickler items, ``period`` (``week``/``month``/``quarter``).
+    ``bucket`` and, for tickler items, ``period``
+    (``week``/``month``/``quarter``). Buckets are
+    ``inbox``/``next``/``delegated``/``tickler``, ``project`` (an unchecked
+    item on a project page, with ``proj`` and any ``surfaced`` view) and
+    ``capture`` (a blank write-in row — the Inbox capture lines and the
+    add-an-action lines at the foot of each project page, which carry the
+    project name in ``proj``). The projects summary page is read-only and
+    contributes nothing.
 
     ``context`` (``{"projects": [...], "people": [...]}``) is the vocabulary
     the sheet was printed against; it rides along so the scanner can hand it
@@ -57,6 +63,8 @@ def tasks_document(buckets: list[dict], the_date: str, context: dict | None = No
     """
     out: dict[str, dict] = {}
     for b in buckets:
+        if b.get("kind") == "summary":
+            continue  # read-only index page: nothing to scan, nothing to key
         if b["kind"] == "sectioned":
             groups = [(sec["title"], sec["items"]) for sec in b["sections"]]
             period_of = {"Next week": "week", "Next month": "month", "Next quarter": "quarter"}
@@ -69,8 +77,12 @@ def tasks_document(buckets: list[dict], the_date: str, context: dict | None = No
         else:
             for t in b["items"]:
                 entry = dict(t)
-                entry["bucket"] = b["key"]
+                entry["bucket"] = b.get("bucket", b["key"])
                 out[t["id"]] = entry
+        for t in b.get("capture_items") or []:
+            entry = dict(t)
+            entry["bucket"] = "capture"
+            out[t["id"]] = entry
     doc = {"schema": TASKS_SCHEMA, "date": the_date, "tasks": out}
     if context:
         doc["context"] = context

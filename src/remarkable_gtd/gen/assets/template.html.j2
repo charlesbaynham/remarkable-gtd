@@ -4,7 +4,8 @@
     layout approved in the HTML preview (same gtd.css). generate.py
     renders one bucket at a time, measures its height, and emits a
     PDF page cut to fit. `qr(text)` is a Jinja global -> PNG data-URI.
-    data-roi attributes are additive only — no CSS or visual change.
+    data-roi attributes mark every region the scanner samples; the
+    deterministic pipeline reads them without a model in the loop.
     ============================================================ -#}
 <!DOCTYPE html>
 <html lang="en">
@@ -40,10 +41,26 @@
   {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_me', '↩', 'To me') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
 {%- elif cat == 'tickler' -%}
   {{ cell(tid, 'activate', '→', 'Now') }}{{ cell(tid, 'done', '✓', 'Done') }}{{ defer(tid, 'redefer', 'Re-defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+{%- elif cat == 'project' -%}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
 {%- else -%}
   {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
 {%- endif -%}
 </div>
+{%- endmacro %}
+
+{#- The NEW box lives inside the PROJECT field so the two never wrap
+    apart: tick it to say the project written in the slot is a new one. -#}
+{% macro newbox(tid) -%}
+<span class="newbox"><span class="box" data-roi="{{ tid }}:new_project"></span><span class="cl">New</span></span>
+{%- endmacro %}
+
+{% macro fld_proj_blank(tid) -%}
+<span class="fld"><span class="fl">Project</span><span class="slot m" data-roi="{{ tid }}:slot_project"></span>{{ newbox(tid) }}</span>
+{%- endmacro %}
+
+{% macro fld_proj_cur(tid, cur) -%}
+<span class="fld"><span class="fl">Project</span><span class="cur tag">{{ cur }}</span><span class="arr">→</span><span class="slot m" data-roi="{{ tid }}:slot_project"></span>{{ newbox(tid) }}</span>
 {%- endmacro %}
 
 {% macro fld_cur(tid, label, cur, slot_cls, slot_name, tag=False) -%}
@@ -60,16 +77,19 @@
 
 {% macro fields(cat, t) -%}
 {%- if cat == 'inbox' -%}
-<div class="fields">{{ fld_blank(t.id, 'Priority', 'n', 'priority') }}{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_blank(t.id, 'Project', 'm', 'project') }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
+<div class="fields">{{ fld_blank(t.id, 'Priority', 'n', 'priority') }}{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_proj_blank(t.id) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
 {%- elif cat == 'delegated' -%}
-<div class="fields">{{ fld_prom(t.id, 'To', t.to, 'to', 'to') }}{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_cur(t.id, 'Project', t.proj, 'm', 'project', true) }}</div>
-{%- elif cat == 'tickler' -%}
+<div class="fields">{{ fld_prom(t.id, 'To', t.to, 'to', 'to') }}{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_proj_cur(t.id, t.proj) }}</div>
+{%- elif cat == 'tickler' or cat == 'project' -%}
 {#- no metadata -#}
 {%- else -%}
-<div class="fields">{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_cur(t.id, 'Project', t.proj, 'm', 'project', true) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
+<div class="fields">{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_proj_cur(t.id, t.proj) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
 {%- endif -%}
 {%- endmacro %}
 
+{#- A capture row is a normal row whose action is a blank ruled write-in
+    area (data-roi <id>:act) instead of printed text. On a project page it
+    carries no gutter and no fields — just somewhere to add an action. -#}
 {% macro row(cat, t) -%}
 <div class="row" data-roi="{{ t.id }}:row">
   <div class="row-top">
@@ -77,10 +97,16 @@
       <span class="qr" data-roi="{{ t.id }}:qr"><img src="{{ qr(t.id) }}" alt="{{ t.id }}" /></span>
       <span class="code mono">{{ t.id }}</span>
     </div>
-    <div class="act-wrap"><div class="act" data-roi="{{ t.id }}:act">{{ t.act }}</div></div>
-    {{ gutter(cat, t.id) }}
+    <div class="act-wrap">
+      {% if t.capture %}
+      <div class="act cap" data-roi="{{ t.id }}:act"></div>
+      {% else %}
+      <div class="act" data-roi="{{ t.id }}:act">{{ t.act }}{% if t.badge %} <span class="badge">{{ t.badge }}</span>{% endif %}</div>
+      {% endif %}
+    </div>
+    {% if not t.bare %}{{ gutter(cat, t.id) }}{% endif %}
   </div>
-  {{ fields(cat, t) }}
+  {% if not t.bare %}{{ fields(cat, t) }}{% endif %}
 </div>
 {%- endmacro %}
 
@@ -91,21 +117,27 @@
   <span class="k"><span class="kb">→</span><span class="kl">to Delegated</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Defer to Tickler</span></span>
   <span class="k"><span class="kb">✗</span><span class="kl">Drop</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">New = create this project</span></span>
 {%- elif cat == 'delegated' -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">↩</span><span class="kl">Back to me</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Defer 1w/1m/1q</span></span>
   <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">New = create this project</span></span>
 {%- elif cat == 'tickler' -%}
   <span class="k"><span class="kb">→</span><span class="kl">Activate now</span></span>
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Re-defer</span></span>
+  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+{%- elif cat == 'project' -%}
+  <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
 {%- else -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">→</span><span class="kl">Delegate</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Defer 1w/1m/1q</span></span>
   <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">New = create this project</span></span>
 {%- endif -%}
 </div>
 {%- endmacro %}
@@ -130,6 +162,46 @@
     </div>
   </div>
 
+  {% if b.kind == 'summary' %}
+  {#- Project summary: a read-only index. Each block links to that
+      project's own page (data-roi link:P01 -> a PDF GoTo annotation). -#}
+  <div class="rows">
+    {% for p in b['projects'] %}
+    <div class="proj-block" data-roi="link:{{ p.ref }}">
+      <div class="pname">{{ p.name }}</div>
+      {% if p.goal %}<div class="pgoal">{{ p.goal }}</div>{% endif %}
+      <div class="pmeta">
+        <span class="mono">{{ p.ref }} · p{{ p.page_no }}</span>
+        <span class="mono">{{ p.open_count }} open</span>
+        <span class="badge{{ ' stalled' if p.badge == 'STALLED' }}">{{ p.badge }}</span>
+      </div>
+      {% if p.next_action %}<div class="pna"><span class="pl">Next</span>{{ p.next_action }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% if not b['projects'] %}<div class="empty">No projects.</div>{% endif %}
+  </div>
+
+  {% elif b.kind == 'project' %}
+  <div class="proj-head">
+    {% if b.goal %}<div class="pgoal">{{ b.goal }}</div>{% endif %}
+    {% if b['status'] %}<div class="pstatus">{% for line in b['status'] %}<div>{{ line }}</div>{% endfor %}</div>{% endif %}
+    <div><span class="backlink" data-roi="link:projects">← Projects</span></div>
+  </div>
+
+  {{ legend('project') }}
+
+  <div class="rows">
+    {% for t in b['items'] %}{{ row('project', t) }}{% endfor %}
+    {% if not b['items'] %}<div class="empty">Nothing open — every action is ticked off.</div>{% endif %}
+    {% if b['done_items'] %}
+    <div class="cap-head">Done</div>
+      {% for d in b['done_items'] %}<div class="row"><div class="done-item">{{ d }}</div></div>{% endfor %}
+    {% endif %}
+    <div class="cap-head">+ Add actions to this project</div>
+    {% for t in b['capture_items'] %}{{ row('project', t) }}{% endfor %}
+  </div>
+
+  {% else %}
   {{ legend(b.key) }}
 
   <div class="rows">
@@ -144,15 +216,12 @@
       {% if not b['items'] %}<div class="empty">Empty — nothing to show.</div>{% endif %}
     {% endif %}
 
-    {% if b.capture %}
-    <div class="capture">
-      <div class="ct">+ Capture — write new items here</div>
-      {% for i in range(1, b.capture + 1) %}
-      <div class="cap-line" data-roi="capture:N{{ i }}:line"><span class="cn">N{{ i }}</span><span class="cbx" data-roi="capture:N{{ i }}:box"></span></div>
-      {% endfor %}
-    </div>
+    {% if b['capture_items'] %}
+    <div class="cap-head">+ Capture — write new items here</div>
+      {% for t in b['capture_items'] %}{{ row(b.key, t) }}{% endfor %}
     {% endif %}
   </div>
+  {% endif %}
 
   <div class="foot">
     <span class="mono">{{ b.title }} · {{ date_stamp }}</span>

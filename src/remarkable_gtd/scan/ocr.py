@@ -17,11 +17,15 @@ Every engine takes an optional ``hint`` naming the kind of region
 ``block``) and an optional ``context`` string (the printed text of an
 edited action) so a model can be told what it is looking at.
 
-When the whole row is ticked ✎ EDIT, ``read`` is not enough — the pipeline
-instead crops the entire row and calls ``interpret``, which asks the model
-for a structured ``gtd.edit/1`` reading (:data:`EDIT_SCHEMA`) via
-OpenRouter's ``json_schema`` response format: what was handwritten, whether
-it was understood, and where the item should end up.
+Deterministic first, AI only by explicit opt-in: ticks, QRs and fixed slots
+are read by plain Python, and a model is called only to transcribe an inked
+write-in region or — when I ticked ✎ EDIT, explicitly asking for it — to
+interpret a whole row. That second call is ``interpret``, which crops the
+entire row and asks for a structured ``gtd.edit/2`` reading
+(:data:`EDIT_SCHEMA`) via OpenRouter's ``json_schema`` response format: the
+verbatim handwriting, whether it was understood, and a list of vault
+operations to apply. An unclear row comes back ``understood: false`` with no
+operations rather than a guess.
 """
 from __future__ import annotations
 
@@ -66,18 +70,62 @@ _BASE_PROMPT = (
     "borders. If there is no legible handwriting reply with exactly: <empty>"
 )
 
-ROUTES = (
-    "keep", "done", "drop", "next", "delegated",
-    "tickler_1w", "tickler_1m", "tickler_1q", "inbox", "scheduled",
+EDIT_SCHEMA_VERSION = "gtd.edit/2"
+
+# Vault operations the edit agent may ask for. The whole vocabulary is
+# listed to the model, with the row's own handle implied for the ones that
+# act on "this item".
+OPS = (
+    "update", "complete", "delete", "move", "capture", "add_next_action",
+    "delegate", "schedule", "add_to_tickler", "create_project",
+    "add_project_action",
 )
+
+# Destinations for `move`.
+MOVE_TARGETS = ("next", "delegated", "inbox", "scheduled", "tickler", "project")
+
+TICKLER_PERIODS = ("1w", "1m", "1q")
+
+# One flat, strict object per operation: OpenRouter's strict json_schema
+# mode allows no oneOf/anyOf, so every key is present on every operation
+# and the ones that do not apply are null.
+_OP_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "op", "text", "priority", "due", "project", "person", "to",
+        "period", "name", "goal",
+    ],
+    "properties": {
+        "op": {"type": "string", "enum": list(OPS)},
+        "text": {"type": ["string", "null"],
+                 "description": "New or new-item wording."},
+        "priority": {"type": ["integer", "null"]},
+        "due": {"type": ["string", "null"], "description": "YYYY-MM-DD."},
+        "project": {"type": ["string", "null"],
+                    "description": "Existing project name this item belongs to."},
+        "person": {"type": ["string", "null"],
+                   "description": "Who a delegated item is waiting on."},
+        # No enum on the nullable fields: some providers reject a null inside
+        # an enum under strict mode, so the allowed values are described and
+        # checked in Python instead.
+        "to": {"type": ["string", "null"],
+               "description": "Destination list for op=move: one of "
+                              + ", ".join(MOVE_TARGETS) + "."},
+        "period": {"type": ["string", "null"],
+                   "description": "Tickler bucket for op=move to=tickler or "
+                                  "add_to_tickler: one of " + ", ".join(TICKLER_PERIODS) + "."},
+        "name": {"type": ["string", "null"],
+                 "description": "Project name for op=create_project / add_project_action."},
+        "goal": {"type": ["string", "null"],
+                 "description": "One-line outcome for op=create_project."},
+    },
+}
 
 EDIT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": [
-        "handwriting", "understood", "confidence", "route",
-        "text", "priority", "due", "project", "person", "note",
-    ],
+    "required": ["handwriting", "understood", "confidence", "note", "operations"],
     "properties": {
         "handwriting": {
             "type": "string",
@@ -85,13 +133,8 @@ EDIT_SCHEMA = {
         },
         "understood": {"type": "boolean"},
         "confidence": {"type": "number"},
-        "route": {"type": "string", "enum": list(ROUTES)},
-        "text": {"type": ["string", "null"]},
-        "priority": {"type": ["integer", "null"]},
-        "due": {"type": ["string", "null"]},
-        "project": {"type": ["string", "null"]},
-        "person": {"type": ["string", "null"]},
         "note": {"type": "string"},
+        "operations": {"type": "array", "items": _OP_SCHEMA},
     },
 }
 
@@ -104,43 +147,102 @@ def _bucket_description(task: dict) -> str:
         return f"Delegated, waiting on {task.get('to') or 'someone'}"
     if bucket == "tickler":
         return f"Tickler ({task.get('period') or 'unknown period'})"
+    if bucket == "project":
+        return f"an item on the page of project {task.get('proj') or 'unknown'}"
+    if bucket == "capture":
+        proj = task.get("proj")
+        if proj:
+            return f"a blank add-an-action line on the page of project {proj}"
+        return "a blank capture line on the Inbox page"
     return _BUCKET_LABELS.get(bucket, bucket or "unknown")
+
+
+_GTD_BRIEF = """How this GTD system works — the lists and what each one means:
+- Inbox: unprocessed capture. Anything written down but not yet decided on.
+- Next actions: concrete actions on my own plate, each optionally with a
+  priority (higher number = more urgent), a deadline and a project.
+- Delegated: things I am waiting on another person for, with a chase-by date.
+- Scheduled: a dated appointment or deadline I want reminding about.
+- Tickler: deferred items that resurface by themselves in 1w, 1m or 1q.
+- Project pages: an outcome plus an ordered checkbox list of actions. The
+  first unchecked action is that project's current next action, and it is
+  the one surfaced in Next actions / Delegated / Scheduled / Tickler.
+
+The operations you may ask for (this row's own item is implied for
+update, complete, delete and move):
+- update: change this item in place — new wording, priority, due, project
+  or person. Use it when the annotation amends the item where it is.
+- complete: tick this item off as done.
+- delete: throw this item away without doing it.
+- move: send this item to another list; `to` says which
+  (next, delegated, inbox, scheduled, tickler, project), with `period`
+  (1w/1m/1q) for tickler and `project` for project.
+- capture: put new raw text into the Inbox for me to process later.
+- add_next_action: create a NEW next action (text, and optionally priority,
+  due, project) — not a change to this row.
+- delegate: create a NEW delegated item waiting on `person`, `due` = chase-by.
+- schedule: create a NEW scheduled reminder on `due`.
+- add_to_tickler: create a NEW deferred item resurfacing after `period`.
+- create_project: create a NEW project page with `name` and `goal`.
+- add_project_action: append an action (`text`) to the project named `name`.
+"""
 
 
 def build_edit_prompt(
     task: dict, vocabulary: dict | None = None, today: str | None = None
 ) -> str:
-    """The instruction sent alongside a whole-row crop when ✎ EDIT is ticked."""
+    """The brief sent alongside a whole-row crop when ✎ EDIT is ticked.
+
+    This is the one place in the pipeline where a model is asked to decide
+    anything: every other mark on the sheet is a tick box, a QR or a fixed
+    slot read deterministically. So the brief spells out how the system
+    works, what each operation means, and that saying "not understood" is
+    always preferable to guessing.
+    """
     projects = (vocabulary or {}).get("projects") or []
     people = (vocabulary or {}).get("people") or []
+    proj_list = ", ".join(projects) if projects else "none"
+    people_list = ", ".join(people) if people else "none"
     return (
-        "You are reading one row of a printed GTD to-do sheet that the user "
-        "has annotated by hand. The crop shows the whole row: the printed "
-        "item text, a gutter of tick boxes (the ✎ EDIT box is ticked, "
-        "which is why you are being asked) and labelled boxes PRIORITY, DUE, "
-        "PROJECT, TO.\n\n"
-        f"The printed row as it stands: list {_bucket_description(task)}; "
-        f"text \"{task.get('act', '')}\"; priority {task.get('pri') or 'none'}; "
-        f"due {task.get('due') or 'none'}; project {task.get('proj') or 'none'}.\n\n"
-        f"Today is {today or 'unknown'}. Existing projects: "
-        f"{', '.join(projects) if projects else 'none'}. People things are "
-        f"delegated to: {', '.join(people) if people else 'none'}.\n\n"
-        "Work out what the user wants done to this item from the "
-        "handwriting (strike-throughs, arrows, words in or near the boxes) "
-        "and answer as JSON: handwriting = verbatim transcription; "
-        "understood = false if illegible or the intent is unclear, then "
-        "leave every change null and explain in note, never guess; route = "
-        "where the item should live afterwards: keep (stays where it is, "
-        "changes applied in place; the default), done, drop, next (to Next "
-        "Actions), delegated (waiting on someone; fill person), "
-        "tickler_1w/1m/1q (defer a week/month/quarter), inbox, scheduled "
-        "(dated appointment; fill due); text = the new wording if changed "
-        "(struck-through printed words removed, handwritten words replace "
-        "or extend them), null if unchanged; priority = new integer or "
-        "null; due = new date as YYYY-MM-DD resolving relative dates from "
-        "today, or null; project = exactly one of the existing projects "
-        "when it clearly matches one, else the name as written, or null; "
-        "person = who it is delegated to, or null; note = one sentence."
+        "You are the editing agent for a paper GTD (Getting Things Done) "
+        "system. The crop shows ONE row of a printed sheet that I annotated "
+        "by hand on an e-ink tablet: the printed item text, a gutter of tick "
+        "boxes (the ✎ EDIT box is ticked, which is the only reason you are "
+        "being asked) and, on most rows, labelled write-in boxes PRIORITY, "
+        "DUE, PROJECT, TO. Read my handwriting — new words, strike-throughs, "
+        "arrows, anything in or near the boxes — and say what should happen "
+        "to my vault.\n\n"
+        + _GTD_BRIEF
+        + "\nThe printed row as it stands: "
+        f"{_bucket_description(task)}; text \"{task.get('act', '')}\"; "
+        f"priority {task.get('pri') or 'none'}; due {task.get('due') or 'none'}; "
+        f"project {task.get('proj') or 'none'}; "
+        f"delegated to {task.get('to') or 'nobody'}.\n\n"
+        f"Today is {today or 'unknown'}. My existing projects, spelled "
+        f"exactly as they are named: {proj_list}. People I delegate to: "
+        f"{people_list}.\n\n"
+        "Answer as JSON. handwriting = verbatim transcription of everything "
+        "handwritten in the crop. confidence = 0..1. note = one sentence on "
+        "how you read the row. operations = the list of operations to apply: "
+        "it may be empty (the annotation changes nothing), one operation, or "
+        "several (for example update this item AND add a new next action). "
+        "Every key of an operation must be present; set the ones that do not "
+        "apply to null.\n\n"
+        "Rules:\n"
+        "- If you cannot read the handwriting, or you can read it but cannot "
+        "tell what I want done, set understood = false, leave operations "
+        "empty and say why in note. Never guess: an unapplied row I fix by "
+        "hand costs me seconds, a wrong one costs me the trust in the whole "
+        "system.\n"
+        "- Never invent a project. Use create_project only when the "
+        "handwriting plainly says to start a new one; otherwise use a "
+        "project name exactly as listed above, and if the handwriting names "
+        "something that is not on the list, say so in note.\n"
+        "- Dates are YYYY-MM-DD, resolved from today.\n"
+        "- Prefer update over delete-and-recreate; prefer one operation over "
+        "several when one says it.\n"
+        "- A tick in a gutter box is read separately and reliably without "
+        "you, so do not repeat it: only report what the handwriting says."
     )
 
 
@@ -262,6 +364,10 @@ class OpenRouterEngine:
 
     - ``OPENROUTER_API_KEY`` — required.
     - ``OPENROUTER_MODEL`` — model id, default :data:`DEFAULT_OPENROUTER_MODEL`.
+    - ``OPENROUTER_EDIT_MODEL`` — model id for :meth:`interpret` only, so the
+      ✎ EDIT agent (which reasons about the vault, not just glyphs) can be a
+      stronger model than the one transcribing slots. Falls back to
+      ``OPENROUTER_MODEL``, then to the default.
 
     Each ``read`` is one chat-completion request carrying one small PNG, so a
     typical sheet costs a few hundred image tokens in total.
@@ -273,6 +379,7 @@ class OpenRouterEngine:
         self,
         api_key: str | None = None,
         model: str | None = None,
+        edit_model: str | None = None,
         timeout: float = 60.0,
         retries: int = 2,
         url: str = OPENROUTER_URL,
@@ -283,6 +390,12 @@ class OpenRouterEngine:
                 "OpenRouter OCR needs OPENROUTER_API_KEY in the environment"
             )
         self.model = model or os.environ.get("OPENROUTER_MODEL") or DEFAULT_OPENROUTER_MODEL
+        self.edit_model = (
+            edit_model
+            or os.environ.get("OPENROUTER_EDIT_MODEL")
+            or os.environ.get("OPENROUTER_MODEL")
+            or DEFAULT_OPENROUTER_MODEL
+        )
         self.timeout = timeout
         self.retries = retries
         self.url = url
@@ -357,9 +470,9 @@ class OpenRouterEngine:
     ) -> dict:
         """Structured reading of a whole ✎-EDIT row: see :data:`EDIT_SCHEMA`."""
         payload = {
-            "model": self.model,
+            "model": self.edit_model,
             "temperature": 0,
-            "max_tokens": 400,
+            "max_tokens": 900,
             "messages": [
                 {
                     "role": "user",
@@ -392,6 +505,10 @@ class OpenRouterEngine:
             parsed = None
         if not isinstance(parsed, dict) or not isinstance(parsed.get("understood"), bool):
             raise RuntimeError(f"OpenRouter edit reply was not valid JSON: {text[:200]}")
+        if not isinstance(parsed.get("operations"), list):
+            raise RuntimeError(
+                f"OpenRouter edit reply has no operations list: {text[:200]}"
+            )
         return parsed
 
 

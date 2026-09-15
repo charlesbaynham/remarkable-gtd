@@ -12,7 +12,9 @@ Colours:
     red     write-in regions (metadata slots, capture lines)
     green   QR codes (header + per-row)
     magenta corner registration marks
-    grey    action-text region (transcribed only when Edit is ticked)
+    grey    action-text region (transcribed only when Edit is ticked, or
+            always on a blank capture row)
+    cyan    internal hyperlink targets on the project pages (never sampled)
 """
 from __future__ import annotations
 
@@ -28,12 +30,15 @@ COLOURS_BGR = {
     "qr": (0, 170, 0),
     "reg": (200, 0, 200),
     "act": (140, 140, 140),
+    "link": (0, 140, 200),
 }
 
 
 def classify(key: str) -> str:
     if key.startswith("reg:"):
         return "reg"
+    if key.startswith("link:"):
+        return "link"
     if key == "page:qr" or key.endswith(":qr"):
         return "qr"
     if key.endswith(":act"):

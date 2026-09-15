@@ -27,7 +27,12 @@ class ScanConfig:
     """Tunables for the scan pipeline."""
 
     ink_fill_threshold: float = 0.06   # tick boxes
-    slot_fill_threshold: float = 0.03  # write-in slots / capture lines (OCR trigger)
+    # Write-in slots / capture rows (the OCR trigger). Unchanged when the
+    # slots grew to stylus size: a single handwritten digit in a 10x8 mm
+    # PRIORITY box is roughly 6 mm tall by 3 mm wide of stroke-covered area,
+    # still ~6 % fill — comfortably above 0.03 — and a written word or date
+    # far more. Raising it would only start losing sparse handwriting.
+    slot_fill_threshold: float = 0.03
     inner_inset_frac: float = 0.22     # excludes the printed box border (tick boxes)
     slot_inset_frac: float = 0.15      # slots are wide; the border is only ~3px but
                                        # a 1px scale mismatch would leak it in
@@ -36,7 +41,7 @@ class ScanConfig:
 
 
 # ROI-key prefixes that are not per-task entries.
-_SPECIAL_PREFIXES = ("reg:", "page:", "capture:")
+_SPECIAL_PREFIXES = ("reg:", "page:", "capture:", "link:")
 # Per-task ROI suffixes that are not gutter tick boxes.
 _NON_TICK_SUFFIXES = ("qr", "act", "row")
 
@@ -126,13 +131,22 @@ _FAILED_EDIT = {
     "handwriting": "",
     "understood": False,
     "confidence": 0.0,
-    "route": "keep",
-    "text": None,
-    "priority": None,
-    "due": None,
-    "project": None,
-    "person": None,
+    "operations": [],
 }
+
+
+def _edit_act_text(edit: dict) -> str | None:
+    """The new wording an understood edit asks for, if any.
+
+    ``gtd.edit/2`` has no top-level text: new wording travels on whichever
+    operation carries it (an ``update``, or the ``text`` of a re-route).
+    """
+    if not edit.get("understood"):
+        return None
+    for op in edit.get("operations") or []:
+        if isinstance(op, dict) and op.get("text"):
+            return op["text"]
+    return None
 
 
 def run_scan(
@@ -263,11 +277,26 @@ def run_scan(
                     "fill": round(fill, 4),
                 }
 
+        task_entry = task_entries.get(task_id, {})
+        task_bucket = task_entry.get("bucket") or bucket
+
+        # A capture row prints no text: its whole action area is the
+        # write-in region. Measure it with the slot thresholds and
+        # transcribe it only if there is ink.
+        act_text = None
+        capture_inked: bool | None = None
+        if task_bucket == "capture" and "act" in t_rois:
+            fill, capture_inked = ink_mod.detect_box(
+                warped_binary, t_rois["act"], canvas,
+                inner_inset_frac=cfg.slot_inset_frac,
+                threshold=cfg.slot_fill_threshold,
+            )
+            if capture_inked:
+                act_text = ocr_crop(t_rois["act"], "capture", inset_px=0)
+
         # Edit ticked: ask the engine to interpret the whole row; fall back
         # to re-reading just the action text if it can't or won't.
-        task_entry = task_entries.get(task_id, {})
         edit: dict | None = None
-        act_text = None
         if edited:
             interpret_fn = getattr(ocr, "interpret", None)
             if interpret_fn is not None:
@@ -285,21 +314,28 @@ def run_scan(
                     act_text = ocr_crop(
                         t_rois["act"], "act", inset_px=0, context=task_entry.get("act")
                     )
-            elif edit.get("understood") and edit.get("text") is not None:
-                act_text = edit["text"]
+            else:
+                new_text = _edit_act_text(edit)
+                if new_text is not None:
+                    act_text = new_text
 
         entry, task_warnings = resolve_task(
-            task_id, ticks, bucket,
+            task_id, ticks, task_bucket,
             field_texts=field_texts or None,
             act_text=act_text,
             edit=edit,
         )
+        if capture_inked is not None:
+            entry["inked"] = capture_inked
         qr_text = task_qrs.get(task_id)
         entry["qr_verified"] = qr_text == task_id
         tasks_out.append(entry)
         warnings.extend(task_warnings)
 
-    # ---- capture lines ------------------------------------------------------
+    # ---- legacy capture lines ------------------------------------------
+    # Sheets printed before capture lines became full rows carry
+    # ``capture:N1:box`` / ``:line`` ROIs instead. New sheets have none, so
+    # this loop yields an empty list.
     captures_out: list[dict] = []
     capture_boxes = sorted(
         k for k in rois if k.startswith("capture:") and k.endswith(":box")

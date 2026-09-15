@@ -33,8 +33,11 @@ def scan_pdf(
     Returns:
         ``{"schema": "gtd.decisions/1", "source_pdf": ..., "pages": [...]}``
         where each page entry is a per-page decisions document (see
-        :func:`remarkable_gtd.scan.pipeline.run_scan`) plus ``page_key`` and
-        ``page_no``, or ``{"page_key", "page_no", "error"}``.
+        :func:`remarkable_gtd.scan.pipeline.run_scan`) plus ``page_key``,
+        ``page_no`` and, on a project page, ``project`` (``{index, name}``);
+        or ``{"page_key", "page_no", "error"}``; or, for a page the manifest
+        marks ``scan: false`` (the projects summary),
+        ``{"page_key", "page_no", "skipped": true}``.
     """
     import pymupdf
 
@@ -56,13 +59,24 @@ def scan_pdf(
         if i >= len(keys):
             break
         page_key = keys[i]
+        page_entry = manifest["pages"][page_key]
+        if not page_entry.get("scan", True):
+            # A read-only page (the projects summary): nothing to tick, so
+            # it is not rasterised or rectified at all.
+            page_results.append(
+                {"page_key": page_key, "page_no": i + 1, "skipped": True}
+            )
+            continue
         mat = pymupdf.Matrix(dpi / 72, dpi / 72)
         pix = page.get_pixmap(matrix=mat)
         img_path = work_dir / f"{pdf_path.stem}.page{i + 1}.png"
         pix.save(str(img_path))
         try:
             decisions = run_scan(img_path, manifest, cfg, page_key, tasks=tasks)
-            page_results.append({"page_key": page_key, "page_no": i + 1, **decisions})
+            result = {"page_key": page_key, "page_no": i + 1, **decisions}
+            if page_entry.get("project"):
+                result["project"] = page_entry["project"]
+            page_results.append(result)
         except Exception as exc:  # keep going: one bad page must not lose the rest
             page_results.append({"page_key": page_key, "page_no": i + 1, "error": str(exc)})
     doc.close()
@@ -124,18 +138,23 @@ def scan_rmdoc(
 
 
 def summarize(decisions: dict) -> dict:
-    """Counts for a log line: pages, tasks, actions, edits, captures, warnings."""
+    """Counts for a log line: pages, tasks, actions, edits, captures, warnings.
+
+    ``captures`` counts written-on blank rows: the capture rows of a modern
+    sheet (task entries carrying ``inked``) plus the ``captures`` list of a
+    sheet printed when capture lines were not rows.
+    """
     pages = decisions.get("pages", [])
     tasks = [t for p in pages for t in p.get("tasks", [])]
     return {
         "pages": len(pages),
         "errors": sum(1 for p in pages if "error" in p),
+        "skipped": sum(1 for p in pages if p.get("skipped")),
         "tasks": len(tasks),
         "actions": sum(1 for t in tasks if t.get("action") != "none"),
         "edits": sum(1 for t in tasks if t.get("edited") or t.get("fields")),
-        "captures": sum(
-            1 for p in pages for c in p.get("captures", []) if c.get("inked")
-        ),
+        "captures": sum(1 for t in tasks if t.get("inked"))
+        + sum(1 for p in pages for c in p.get("captures", []) if c.get("inked")),
         "warnings": sum(len(p.get("warnings", [])) for p in pages)
         + len(decisions.get("warnings", [])),
     }

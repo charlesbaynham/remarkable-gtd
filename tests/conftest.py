@@ -6,6 +6,7 @@ from the manifest, and assert the scanner recovers exactly those choices.
 """
 from __future__ import annotations
 
+import functools
 import json
 from datetime import date
 from pathlib import Path
@@ -16,12 +17,21 @@ import pytest
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+@functools.lru_cache(maxsize=None)
 def _chromium_available() -> bool:
+    """True only if Playwright can actually launch its Chromium.
+
+    ``executable_path`` is a computed path (and names the full browser,
+    while headless launches use the headless shell), so it says nothing
+    about what is installed; a real launch is the only honest check.
+    """
     try:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as pw:
-            return bool(pw.chromium.executable_path)
+            browser = pw.chromium.launch()
+            browser.close()
+            return True
     except Exception:
         return False
 
@@ -49,6 +59,16 @@ def rendered_sheet(tmp_path_factory, tasks_min):
     render_pdf(tasks_min, date(2026, 5, 30), pdf_path, manifest_path=manifest_path)
     assert pdf_path.exists() and manifest_path.exists()
     return pdf_path, manifest_path
+
+
+@pytest.fixture(scope="session")
+def tasks_doc(rendered_sheet) -> dict:
+    """The ``gtd.tasks/1`` document embedded in the rendered sheet."""
+    from remarkable_gtd.common.embedded import read_state
+
+    _manifest, tasks = read_state(rendered_sheet[0].read_bytes())
+    assert tasks is not None
+    return tasks
 
 
 @pytest.fixture(scope="session")

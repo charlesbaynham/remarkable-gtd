@@ -1,45 +1,192 @@
 {
   "date": "2026-06-02",
-
   "inbox": [
-    { "act": "SCAN TEST — tick 'Next': move this to next actions" },
-    { "act": "SCAN TEST — tick 'Delegate': send this to someone else" },
-    { "act": "SCAN TEST — tick 'Drop': discard this item entirely" },
-    { "act": "SCAN TEST — tick 'Next' AND 'Delegate': conflict, next should win" },
-    { "act": "SCAN TEST — defer 1w: kick this to the 1-week tickler" },
-    { "act": "SCAN TEST — defer 1m: kick this to the 1-month tickler" },
-    { "act": "SCAN TEST — leave blank: no action taken on this item" }
+    {
+      "act": "SCAN TEST \u2014 tick 'Next': move this to next actions"
+    },
+    {
+      "act": "SCAN TEST \u2014 tick 'Delegate': send this to someone else"
+    },
+    {
+      "act": "SCAN TEST \u2014 tick 'Drop': discard this item entirely"
+    },
+    {
+      "act": "SCAN TEST \u2014 tick 'Next' AND 'Delegate': conflict, next should win"
+    },
+    {
+      "act": "SCAN TEST \u2014 defer 1w: kick this to the 1-week tickler"
+    },
+    {
+      "act": "SCAN TEST \u2014 defer 1m: kick this to the 1-month tickler"
+    },
+    {
+      "act": "SCAN TEST \u2014 leave blank: no action taken on this item"
+    }
   ],
-
   "next": [
-    { "id": "NA-01", "pri": 7, "due": "2 Jun",  "proj": "test", "act": "SCAN TEST — tick 'Done': this task is complete" },
-    { "id": "NA-02", "pri": 6, "due": "3 Jun",  "proj": "test", "act": "SCAN TEST — tick 'Delegate': hand this off to someone" },
-    { "id": "NA-03", "pri": 5, "due": "5 Jun",  "proj": "test", "act": "SCAN TEST — defer 1w: not urgent, push one week" },
-    { "id": "NA-04", "pri": 4, "due": "8 Jun",  "proj": "test", "act": "SCAN TEST — defer 1m: push back a full month" },
-    { "id": "NA-05", "pri": 3, "due": "10 Jun", "proj": "test", "act": "SCAN TEST — defer 1q: push to next quarter" },
-    { "id": "NA-06", "pri": 2, "due": "15 Jun", "proj": "test", "act": "SCAN TEST — leave blank: carry forward as-is" }
+    {
+      "id": "NA-01",
+      "pri": 7,
+      "due": "2 Jun",
+      "proj": "test",
+      "act": "SCAN TEST \u2014 tick 'Done': this task is complete"
+    },
+    {
+      "id": "NA-02",
+      "pri": 6,
+      "due": "3 Jun",
+      "proj": "test",
+      "act": "SCAN TEST \u2014 tick 'Delegate': hand this off to someone"
+    },
+    {
+      "id": "NA-03",
+      "pri": 5,
+      "due": "5 Jun",
+      "proj": "test",
+      "act": "SCAN TEST \u2014 defer 1w: not urgent, push one week"
+    },
+    {
+      "id": "NA-04",
+      "pri": 4,
+      "due": "8 Jun",
+      "proj": "test",
+      "act": "SCAN TEST \u2014 defer 1m: push back a full month"
+    },
+    {
+      "id": "NA-05",
+      "pri": 3,
+      "due": "10 Jun",
+      "proj": "test",
+      "act": "SCAN TEST \u2014 defer 1q: push to next quarter"
+    },
+    {
+      "id": "NA-06",
+      "pri": 2,
+      "due": "15 Jun",
+      "proj": "test",
+      "act": "SCAN TEST \u2014 leave blank: carry forward as-is"
+    }
   ],
-
   "delegated": [
-    { "id": "DG-01", "pri": 7, "due": "3 Jun",  "proj": "test", "to": "Alice", "act": "SCAN TEST — tick 'Done': Alice confirmed she finished this" },
-    { "id": "DG-02", "pri": 6, "due": "5 Jun",  "proj": "test", "to": "Bob",   "act": "SCAN TEST — tick 'Back to me': Bob can't do it, reclaim it" },
-    { "id": "DG-03", "pri": 4, "due": "12 Jun", "proj": "test", "to": "Carol", "act": "SCAN TEST — defer 1w: chase Carol again next week" },
-    { "id": "DG-04", "pri": 2, "due": "20 Jun", "proj": "test", "to": "Dave",  "act": "SCAN TEST — leave blank: still waiting, no change" }
+    {
+      "id": "DG-01",
+      "pri": 7,
+      "due": "3 Jun",
+      "proj": "test",
+      "to": "Alice",
+      "act": "SCAN TEST \u2014 tick 'Done': Alice confirmed she finished this"
+    },
+    {
+      "id": "DG-02",
+      "pri": 6,
+      "due": "5 Jun",
+      "proj": "test",
+      "to": "Bob",
+      "act": "SCAN TEST \u2014 tick 'Back to me': Bob can't do it, reclaim it"
+    },
+    {
+      "id": "DG-03",
+      "pri": 4,
+      "due": "12 Jun",
+      "proj": "test",
+      "to": "Carol",
+      "act": "SCAN TEST \u2014 defer 1w: chase Carol again next week"
+    },
+    {
+      "id": "DG-04",
+      "pri": 2,
+      "due": "20 Jun",
+      "proj": "test",
+      "to": "Dave",
+      "act": "SCAN TEST \u2014 leave blank: still waiting, no change"
+    }
   ],
-
   "tickler": {
     "week": [
-      { "act": "SCAN TEST — tick 'Activate': pull this into next actions now" },
-      { "act": "SCAN TEST — tick 'Done': this resolved itself, close it" },
-      { "act": "SCAN TEST — redefer 1w: not ready yet, another week" }
+      {
+        "act": "SCAN TEST \u2014 tick 'Activate': pull this into next actions now"
+      },
+      {
+        "act": "SCAN TEST \u2014 tick 'Done': this resolved itself, close it"
+      },
+      {
+        "act": "SCAN TEST \u2014 redefer 1w: not ready yet, another week"
+      }
     ],
     "month": [
-      { "act": "SCAN TEST — tick 'Activate': time has come, move to next actions" },
-      { "act": "SCAN TEST — redefer 1m: still not relevant, push another month" }
+      {
+        "act": "SCAN TEST \u2014 tick 'Activate': time has come, move to next actions"
+      },
+      {
+        "act": "SCAN TEST \u2014 redefer 1m: still not relevant, push another month"
+      }
     ],
     "quarter": [
-      { "act": "SCAN TEST — tick 'Done': no longer relevant, close it" },
-      { "act": "SCAN TEST — leave blank: check again next quarter" }
+      {
+        "act": "SCAN TEST \u2014 tick 'Done': no longer relevant, close it"
+      },
+      {
+        "act": "SCAN TEST \u2014 leave blank: check again next quarter"
+      }
+    ]
+  },
+  "projects": [
+    {
+      "name": "Scan test project",
+      "goal": "Prove the project pages round-trip through the device",
+      "status": [
+        "\u2705 Pages render",
+        "\ud83d\udd04 Ticks read back"
+      ],
+      "stalled": false,
+      "items": [
+        {
+          "text": "SCAN TEST \u2014 already done: printed struck through, no boxes",
+          "done": true,
+          "handle": "proj:test:0:11110000"
+        },
+        {
+          "text": "SCAN TEST \u2014 tick 'Done' here to tick it off in the project page",
+          "done": false,
+          "handle": "proj:test:1:22220000",
+          "surfaced": "next"
+        },
+        {
+          "text": "SCAN TEST \u2014 leave blank: stays open on the project page",
+          "done": false,
+          "handle": "proj:test:2:33330000",
+          "surfaced": null
+        }
+      ]
+    },
+    {
+      "name": "Stalled project",
+      "goal": "Nothing has moved here for a while",
+      "status": [
+        "\u23f3 Nothing surfaced in any view"
+      ],
+      "stalled": true,
+      "items": [
+        {
+          "text": "SCAN TEST \u2014 stalled project's only open action",
+          "done": false,
+          "handle": "proj:stalled:0:44440000",
+          "surfaced": null
+        }
+      ]
+    }
+  ],
+  "context": {
+    "projects": [
+      "test",
+      "Scan test project",
+      "Stalled project"
+    ],
+    "people": [
+      "Alice",
+      "Bob",
+      "Carol",
+      "Dave"
     ]
   }
 }

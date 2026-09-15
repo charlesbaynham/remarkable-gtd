@@ -55,6 +55,107 @@ def _with_ids(items, prefix, start=1):
     return out, start + len(items)
 
 
+CAPTURE_LINES = 6        # blank capture rows at the foot of the Inbox page
+PROJECT_ADD_LINES = 4    # blank "add an action" rows at the foot of a project page
+
+# Which view a project's current next action is surfaced in -> printed badge.
+SURFACED_BADGES = {
+    "next": "NA",
+    "delegated": "DG",
+    "scheduled": "SC",
+    "tickler": "TK",
+}
+
+
+def _capture_items(prefix: str, count: int, bare: bool = False, **extra) -> list[dict]:
+    """Blank write-in rows: no printed text, just an inked-or-not ``act`` box."""
+    out = []
+    for i in range(1, count + 1):
+        item = {"id": f"{prefix}-{i:02d}" if prefix == "CP" else f"{prefix}-C{i}",
+                "act": "", "capture": True}
+        if bare:
+            item["bare"] = True
+        item.update(extra)
+        out.append(item)
+    return out
+
+
+def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
+    """Build the projects summary page and one page per project.
+
+    Each project gets ``ref`` ``P01``, ``P02``… Its unchecked items become
+    rows ``P01-03`` (numbered by their position in the project's item list,
+    so the printed id survives re-ordering of the *open* items), and four
+    blank add-lines ``P01-C1``…``P01-C4`` close the page.
+    """
+    summary_entries: list[dict] = []
+    pages: list[dict] = []
+    for idx, proj in enumerate(projects, start=1):
+        ref = f"P{idx:02d}"
+        name = proj.get("name", f"Project {idx}")
+        items = proj.get("items") or []
+        open_items: list[dict] = []
+        done_items: list[str] = []
+        for pos, it in enumerate(items, start=1):
+            if it.get("done"):
+                done_items.append(it.get("text", ""))
+                continue
+            entry = {
+                "id": f"{ref}-{pos:02d}",
+                "act": it.get("text", ""),
+                "proj": name,
+            }
+            if it.get("handle") is not None:
+                entry["handle"] = it["handle"]
+            surfaced = it.get("surfaced")
+            if surfaced:
+                entry["surfaced"] = surfaced
+                entry["badge"] = SURFACED_BADGES.get(surfaced, surfaced)
+            open_items.append(entry)
+
+        first = open_items[0] if open_items else None
+        if proj.get("stalled") or first is None:
+            badge = "STALLED"
+        else:
+            badge = first.get("badge") or "STALLED"
+
+        page_no_placeholder = 0
+        pages.append({
+            "key": f"project-{idx:02d}",
+            "bucket": "project",
+            "tag": ref,
+            "title": name,
+            "sub": "Project — tick actions off, amend them, or add new ones",
+            "goal": proj.get("goal", ""),
+            "status": proj.get("status") or [],
+            "count_label": f"{len(open_items)} open",
+            "kind": "project",
+            "scan": True,
+            "project": {"index": idx, "name": name},
+            "items": open_items,
+            "done_items": done_items,
+            "capture_items": _capture_items(ref, PROJECT_ADD_LINES, bare=True, proj=name),
+        })
+        summary_entries.append({
+            "ref": ref,
+            "name": name,
+            "goal": proj.get("goal", ""),
+            "open_count": len(open_items),
+            "next_action": first["act"] if first else "",
+            "badge": badge,
+            "page_no": page_no_placeholder,
+        })
+
+    summary = {
+        "key": "projects", "bucket": "projects", "tag": "P", "title": "Projects",
+        "sub": "Outcomes in flight — one page each, overleaf",
+        "count_label": f"{len(projects)} projects",
+        "kind": "summary", "scan": False,
+        "projects": summary_entries,
+    }
+    return summary, pages
+
+
 def build_buckets(data: dict) -> list[dict]:
     inbox, _ = _with_ids(data.get("inbox", []), "IN")
     nxt, _ = _with_ids(data.get("next", []), "NA")
@@ -70,27 +171,38 @@ def build_buckets(data: dict) -> list[dict]:
         {"key": "inbox", "tag": "0", "title": "Inbox",
          "sub": "Unprocessed capture — route every item out today",
          "count_label": f"{len(inbox)} to process",
-         "kind": "flat", "items": inbox, "capture": 6},
+         "kind": "flat", "items": inbox,
+         "capture_items": _capture_items("CP", CAPTURE_LINES)},
         {"key": "next", "tag": "1", "title": "Next Actions",
          "sub": "On your plate — do, delegate, or defer",
          "count_label": f"{len(nxt)} actions",
-         "kind": "flat", "items": nxt, "capture": 0},
+         "kind": "flat", "items": nxt},
         {"key": "delegated", "tag": "2", "title": "Delegated",
          "sub": "Waiting on others — follow up or reclaim",
          "count_label": f"{len(deleg)} waiting",
-         "kind": "flat", "items": deleg, "capture": 0},
+         "kind": "flat", "items": deleg},
         {"key": "tickler", "tag": "3", "title": "Tickler",
          "sub": "Deferred — resurface when the time comes",
          "count_label": f"{tick_total} parked",
-         "kind": "sectioned", "capture": 0,
+         "kind": "sectioned",
          "sections": [
              {"title": "Next week", "sub": "resurfaces in ~7 days", "items": week},
              {"title": "Next month", "sub": "resurfaces in ~30 days", "items": month},
              {"title": "Next quarter", "sub": "resurfaces in ~90 days", "items": quarter},
          ]},
     ]
+
+    summary, project_pages = build_project_pages(data.get("projects") or [])
+    buckets.append(summary)
+    buckets.extend(project_pages)
+
     for i, b in enumerate(buckets, start=1):
         b["page_no"] = i
+        b.setdefault("bucket", b["key"])
+    # The summary prints each project's page number, known only now.
+    by_ref = {p["project"]["index"]: p["page_no"] for p in project_pages}
+    for entry in summary["projects"]:
+        entry["page_no"] = by_ref[int(entry["ref"][1:])]
     return buckets
 
 
@@ -239,9 +351,11 @@ def render_pdf(
             page_key = make_page_key(b["key"], the_date.strftime("%Y-%m-%d"))
             buckets_rois.append({
                 "key": page_key,
-                "bucket": b["key"],
+                "bucket": b.get("bucket", b["key"]),
                 "page_no": b["page_no"],
                 "render": {"w_px": render_w, "h_px": height_px},
+                "scan": b.get("scan", True),
+                "project": b.get("project"),
                 "rois": rois,
             })
 
@@ -257,6 +371,7 @@ def render_pdf(
         browser.close()
 
     manifest = build_manifest(buckets_rois, the_date, PAGE_W_MM)
+    add_internal_links(writer, buckets, buckets_rois)
     tasks = tasks_document(buckets, the_date.strftime("%Y-%m-%d"), data.get("context"))
     if embed_state:
         attach_state(writer, manifest, tasks)
@@ -268,3 +383,51 @@ def render_pdf(
         Path(manifest_path).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     return {"manifest": manifest, "tasks": tasks}
+
+
+# --------------------------------------------------------------------------
+# Internal navigation: summary <-> project pages
+# --------------------------------------------------------------------------
+def add_internal_links(writer, buckets: list[dict], buckets_rois: list[dict]) -> int:
+    """Turn every ``link:<target>`` ROI into a PDF GoTo link annotation.
+
+    ``link:P01`` on the projects summary jumps to that project's page;
+    ``link:projects`` on a project page jumps back. The ROI rectangle is in
+    page fractions with y measured from the top, so it is flipped into PDF
+    user space against the page's media box.
+
+    Returns the number of annotations added.
+    """
+    from pypdf.annotations import Link
+
+    # ref ("P01" / "projects") -> 0-based PDF page index
+    targets: dict[str, int] = {}
+    for b in buckets:
+        if b.get("kind") == "summary":
+            targets["projects"] = b["page_no"] - 1
+        elif b.get("kind") == "project":
+            targets[f"P{b['project']['index']:02d}"] = b["page_no"] - 1
+
+    added = 0
+    for entry in buckets_rois:
+        page_index = entry["page_no"] - 1
+        box = writer.pages[page_index].mediabox
+        pw, ph = float(box.width), float(box.height)
+        for key, roi in entry["rois"].items():
+            if not key.startswith("link:"):
+                continue
+            target = targets.get(key[len("link:"):])
+            if target is None:
+                continue
+            rect = (
+                roi["x"] * pw,
+                ph * (1.0 - (roi["y"] + roi["h"])),
+                (roi["x"] + roi["w"]) * pw,
+                ph * (1.0 - roi["y"]),
+            )
+            writer.add_annotation(
+                page_number=page_index,
+                annotation=Link(rect=rect, target_page_index=target),
+            )
+            added += 1
+    return added

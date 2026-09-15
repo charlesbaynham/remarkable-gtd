@@ -17,7 +17,7 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
       - name: Test (render-independent)
-        run: pytest -v --ignore=tests/test_end_to_end.py --ignore=tests/test_manifest.py
+        run: pytest -v --ignore=tests/test_end_to_end.py --ignore=tests/test_manifest.py --ignore=tests/test_links.py
 
   full:
     # Full job: generator + manifest + end-to-end (renders with Chromium).
