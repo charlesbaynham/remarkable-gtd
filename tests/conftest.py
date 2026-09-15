@@ -6,6 +6,7 @@ from the manifest, and assert the scanner recovers exactly those choices.
 """
 from __future__ import annotations
 
+import functools
 import json
 from datetime import date
 from pathlib import Path
@@ -16,12 +17,21 @@ import pytest
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+@functools.lru_cache(maxsize=None)
 def _chromium_available() -> bool:
+    """True only if Playwright can actually launch its Chromium.
+
+    ``executable_path`` is a computed path (and names the full browser,
+    while headless launches use the headless shell), so it says nothing
+    about what is installed; a real launch is the only honest check.
+    """
     try:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as pw:
-            return bool(pw.chromium.executable_path)
+            browser = pw.chromium.launch()
+            browser.close()
+            return True
     except Exception:
         return False
 
