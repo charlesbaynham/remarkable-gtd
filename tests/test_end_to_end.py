@@ -185,6 +185,31 @@ def test_inbox_capture_row(rendered_sheet, manifest, tasks_doc, tmp_path):
     assert decisions["captures"] == []
 
 
+def test_inbox_row_can_be_edited(rendered_sheet, manifest, tasks_doc, tmp_path):
+    """An Inbox row carries ✎ Edit, and it reaches the edit agent."""
+    pdf_path, _ = rendered_sheet
+    img = rasterize_page(pdf_path, 0)  # inbox page
+    page = manifest["pages"][INBOX_KEY]
+
+    img = paint_ink(img, page, "IN-01:edit", "tick")
+    img_path = save_png(img, tmp_path / "inbox-edit.png")
+
+    engine = FakeEditEngine()
+    decisions = run_scan(
+        img_path, manifest, ScanConfig(ocr_engine=engine),
+        page_key=INBOX_KEY, tasks=tasks_doc,
+    )
+
+    tasks = by_id(decisions)
+    assert tasks["IN-01"]["edited"] is True
+    assert tasks["IN-01"]["action"] == "none"       # ✎ is a flag, not an action
+    assert tasks["IN-01"]["edit"]["operations"][0]["op"] == "update"
+    assert tasks["IN-01"]["act_text"] == "Amended"
+    assert len(engine.interpret_crops) == 1
+    # Capture rows have no ✎ box at all.
+    assert "CP-01:edit" not in page["rois"]
+
+
 def test_new_project_box_is_recovered(next_page_img, manifest, tasks_doc, tmp_path):
     page = manifest["pages"][NEXT_KEY]
     img = paint_ink(next_page_img, page, "NA-01:new_project", "tick")

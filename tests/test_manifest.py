@@ -8,8 +8,11 @@ from tests.conftest import needs_chromium
 
 pytestmark = needs_chromium
 
+# A blank capture row carries the inbox routing boxes but no ✎ Edit —
+# there is no printed row to re-read.
+INBOX_ROUTING = {"to_next", "to_deleg", "drop", "defer_1w", "defer_1m", "defer_1q"}
 EXPECTED_GUTTERS = {
-    "inbox": {"to_next", "to_deleg", "drop", "defer_1w", "defer_1m", "defer_1q"},
+    "inbox": INBOX_ROUTING | {"edit"},
     "next": {"done", "to_deleg", "edit", "defer_1w", "defer_1m", "defer_1q"},
     "delegated": {"done", "to_me", "edit", "defer_1w", "defer_1m", "defer_1q"},
     "tickler": {"activate", "done", "edit", "redefer_1w", "redefer_1m", "redefer_1q"},
@@ -98,8 +101,9 @@ def test_capture_rows_on_inbox(manifest):
     for i in range(1, 7):
         tid = f"CP-{i:02d}"
         for suffix in ("qr", "act", "row", "slot_project", "new_project",
-                       *EXPECTED_GUTTERS["inbox"]):
+                       *INBOX_ROUTING):
             assert f"{tid}:{suffix}" in rois, f"missing {tid}:{suffix}"
+        assert f"{tid}:edit" not in rois
         # the blank action area is a decent slab to write on
         assert rois[f"{tid}:act"]["w"] > 0.3
 

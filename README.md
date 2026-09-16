@@ -93,7 +93,7 @@ project/person names instead of guessing spelling.
 
 The Inbox page ends with six blank rows `CP-01`…`CP-06`. Each is a full inbox
 row — write the new item on the ruled area and tick in the same gutter where
-it should go, fill in priority/due/project as usual, and tick **NEW** next to
+it should go (minus ✎ Edit: there is no printed row to re-read), fill in priority/due/project as usual, and tick **NEW** next to
 the PROJECT slot if the project you wrote does not exist yet. The `NEW` box
 (`<id>:new_project`) is on inbox, next-action and delegated rows too, and
 comes back as an orthogonal `new_project` flag, never an action.
@@ -194,7 +194,8 @@ Actions per bucket: inbox `to_next | to_deleg | drop | defer`; next
 `done | to_deleg | defer`; delegated `done | to_me | defer`; tickler
 `activate | done | defer` (re-defer). `defer` carries `defer_period`
 (`1w`/`1m`/`1q`). A project-page item can only be `done`; a blank capture row
-takes the inbox verbs. `edited` is set when the ✎ box is ticked and
+takes the inbox routing verbs but carries no ✎ box. `edited` is set when the
+✎ box is ticked and
 `new_project` when the NEW box is; both are flags, never actions. Raw fill
 ratios stay under `ticks` for auditing. The read-only projects summary is
 returned as `{"page_key", "page_no", "skipped": true}`.
