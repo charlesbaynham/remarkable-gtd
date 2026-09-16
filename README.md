@@ -134,15 +134,28 @@ reasons about your vault rather than reading glyphs, so it is worth a
 stronger model), `tesseract`, or `null` (flag inked regions, transcribe
 nothing).
 
-**Reasoning** is on by default for the OpenRouter engine.
-`OPENROUTER_REASONING` takes an effort level (`low`/`medium`/`high`), a token
-budget (`1500`), or `off`. ⚠️ Reasoning tokens are charged against
-`max_tokens`, so enabling it *without* raising the budget truncates the reply
-mid-JSON (`finish_reason: length`) and the ✎ EDIT agent's operations are lost —
-the engine adds `REASONING_TOKEN_HEADROOM` on top of the answer budget
-whenever reasoning is on. Measured on a real sheet: the EDIT call spends
-~600–950 reasoning tokens, a slot transcription ~300–2000, and turning it on
-roughly triples the wall-clock of a scan.
+**Reasoning** is on for the ✎ EDIT agent and off for slot transcription.
+`OPENROUTER_REASONING` (default `medium`) and `OPENROUTER_READ_REASONING`
+(default `off`) each take an effort level (`low`/`medium`/`high`), a token
+budget (`1500`), or `off`.
+
+The split is measured, not a guess. Per call on `google/gemini-3.5-flash`:
+
+| call | cost | prompt | answer | reasoning |
+|---|---|---|---|---|
+| `read` | $0.0043 | ~345 | 56–84 | 284–288 |
+| `interpret` | $0.0102–0.0118 | ~1205 | 211–231 | 638–862 |
+
+Reasoning is ~44% of the price of a `read` and roughly triples its latency
+(3 s → 9–15 s), and it changed no transcription on the test sheet — it is
+reading glyphs, not thinking. On `interpret`, which reasons about the vault,
+it does visible work.
+
+⚠️ **Reasoning tokens are charged against `max_tokens`**, so enabling it
+*without* raising the budget truncates the reply mid-JSON
+(`finish_reason: length`) and the EDIT agent's operations are lost. The engine
+adds `REASONING_TOKEN_HEADROOM` on top of the answer budget whenever reasoning
+is on.
 
 **Tracing.** Set `OPENROUTER_TRACE_DIR` and every call writes
 `NNN-{read,interpret}.json` — the prompt, the model, the reasoning block sent,
