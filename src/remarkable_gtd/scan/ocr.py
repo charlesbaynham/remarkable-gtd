@@ -7,7 +7,9 @@ requests per sheet. Engines:
 
 - ``openrouter`` — a vision LLM through OpenRouter (default: Google Gemini
   Flash). Needs ``OPENROUTER_API_KEY``; ``OPENROUTER_MODEL`` overrides the
-  model id.
+  model id. Reasoning is on by default (``OPENROUTER_REASONING``), and
+  ``OPENROUTER_TRACE_DIR`` dumps every call — prompt, crop, raw reply and the
+  model's thinking — for when a reading needs explaining.
 - ``tesseract`` — offline OCR via pytesseract (poor on handwriting; kept as a
   no-network fallback).
 - ``null`` — transcribes nothing; keeps the ink-trigger logic testable.
@@ -37,12 +39,35 @@ import re
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import numpy as np
 
 DEFAULT_OPENROUTER_MODEL = "google/gemini-3.5-flash"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_REASONING = "medium"
+
+READ_ANSWER_TOKENS = 300
+EDIT_ANSWER_TOKENS = 900
+# Reasoning tokens are charged against max_tokens, so a budget sized for the
+# answer alone truncates it mid-JSON once reasoning is on (finish_reason
+# "length"), and the edit agent's operations are lost.
+REASONING_TOKEN_HEADROOM = 2500
+
+
+def parse_reasoning(value: str | None) -> dict | None:
+    """``OPENROUTER_REASONING`` -> an OpenRouter reasoning block, or None.
+
+    Accepts an effort level (``low``/``medium``/``high``), a token budget
+    (``1500``), or ``off``.
+    """
+    setting = (value if value is not None else DEFAULT_REASONING).strip().lower()
+    if setting in ("off", "none", "no", "0", "false"):
+        return None
+    if setting.isdigit():
+        return {"enabled": True, "max_tokens": int(setting)}
+    return {"enabled": True, "effort": setting}
 
 # What the model is told about each region kind.
 _HINT_PROMPTS = {
@@ -383,6 +408,8 @@ class OpenRouterEngine:
         timeout: float = 60.0,
         retries: int = 2,
         url: str = OPENROUTER_URL,
+        reasoning: str | dict | None = None,
+        trace_dir: str | Path | None = None,
     ):
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
         if not self.api_key:
@@ -400,9 +427,55 @@ class OpenRouterEngine:
         self.retries = retries
         self.url = url
         self.requests_made = 0
+        self.reasoning = (
+            reasoning if isinstance(reasoning, dict)
+            else parse_reasoning(reasoning or os.environ.get("OPENROUTER_REASONING"))
+        )
+        trace = trace_dir or os.environ.get("OPENROUTER_TRACE_DIR")
+        self.trace_dir = Path(trace) if trace else None
+        if self.trace_dir:
+            self.trace_dir.mkdir(parents=True, exist_ok=True)
+
+    def _trace_request(self, payload: dict) -> str | None:
+        """Save the crops this call is about to send; returns its trace stem."""
+        if not self.trace_dir:
+            return None
+        kind = "interpret" if "response_format" in payload else "read"
+        stem = f"{self.requests_made + 1:03d}-{kind}"
+        crops = [
+            part["image_url"]["url"] for part in payload["messages"][0]["content"]
+            if part.get("type") == "image_url"
+        ]
+        for i, url in enumerate(crops):
+            (self.trace_dir / f"{stem}-crop{i}.png").write_bytes(
+                base64.b64decode(url.split(",", 1)[1])
+            )
+        return stem
+
+    def _trace_reply(self, stem: str, payload: dict, data: dict) -> None:
+        """Save the prompt, the raw reply and the model's thinking."""
+        prompt = "\n".join(
+            part["text"] for part in payload["messages"][0]["content"]
+            if part.get("type") == "text"
+        )
+        message = (data.get("choices") or [{}])[0].get("message") or {}
+        (self.trace_dir / f"{stem}.json").write_text(json.dumps({
+            "model": payload["model"],
+            "reasoning": payload.get("reasoning"),
+            "max_tokens": payload.get("max_tokens"),
+            "prompt": prompt,
+            "thinking": message.get("reasoning") or message.get("reasoning_details"),
+            "response": data,
+        }, indent=2), encoding="utf-8")
+
+    def _budget(self, answer_tokens: int) -> int:
+        return answer_tokens + (REASONING_TOKEN_HEADROOM if self.reasoning else 0)
 
     def _post(self, payload: dict) -> dict:
+        if self.reasoning:
+            payload = {**payload, "reasoning": self.reasoning}
         body = json.dumps(payload).encode("utf-8")
+        traced = self._trace_request(payload)
         req = urllib.request.Request(
             self.url,
             data=body,
@@ -418,7 +491,10 @@ class OpenRouterEngine:
         for attempt in range(self.retries + 1):
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                    data = json.loads(resp.read().decode("utf-8"))
+                if traced:
+                    self._trace_reply(traced, payload, data)
+                return data
             except urllib.error.HTTPError as exc:
                 last_err = exc
                 if exc.code in (429, 500, 502, 503, 504) and attempt < self.retries:
@@ -437,7 +513,7 @@ class OpenRouterEngine:
         payload = {
             "model": self.model,
             "temperature": 0,
-            "max_tokens": 300,
+            "max_tokens": self._budget(READ_ANSWER_TOKENS),
             "messages": [
                 {
                     "role": "user",
@@ -472,7 +548,7 @@ class OpenRouterEngine:
         payload = {
             "model": self.edit_model,
             "temperature": 0,
-            "max_tokens": 900,
+            "max_tokens": self._budget(EDIT_ANSWER_TOKENS),
             "messages": [
                 {
                     "role": "user",

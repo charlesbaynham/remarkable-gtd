@@ -303,3 +303,50 @@ def test_openrouter_interpret_unparseable_reply_raises(monkeypatch):
         eng = ocr.OpenRouterEngine()
         with pytest.raises(RuntimeError):
             eng.interpret(np.zeros((10, 10), np.uint8), {"act": "x", "bucket": "next"})
+
+
+@pytest.mark.parametrize("setting,expected", [
+    (None, {"enabled": True, "effort": "medium"}),
+    ("high", {"enabled": True, "effort": "high"}),
+    ("1500", {"enabled": True, "max_tokens": 1500}),
+    ("off", None),
+])
+def test_parse_reasoning(setting, expected):
+    assert ocr.parse_reasoning(setting) == expected
+
+
+def _capture_read(monkeypatch, trace_dir=None):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    captured: dict = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        reply = {"choices": [{"message": {"content": "5", "reasoning": "It is a digit."}}]}
+        return _FakeResponse(json.dumps(reply).encode("utf-8"))
+
+    with mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen):
+        ocr.OpenRouterEngine(trace_dir=trace_dir).read(np.zeros((10, 10), np.uint8))
+    return captured["body"]
+
+
+def test_reasoning_on_by_default_with_room_for_the_answer(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_REASONING", raising=False)
+    body = _capture_read(monkeypatch)
+    assert body["reasoning"] == {"enabled": True, "effort": "medium"}
+    assert body["max_tokens"] == ocr.READ_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM
+
+
+def test_reasoning_off_leaves_the_original_budget(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_REASONING", "off")
+    body = _capture_read(monkeypatch)
+    assert "reasoning" not in body
+    assert body["max_tokens"] == ocr.READ_ANSWER_TOKENS
+
+
+def test_trace_dir_keeps_prompt_crop_and_thinking(monkeypatch, tmp_path):
+    _capture_read(monkeypatch, trace_dir=tmp_path)
+    assert (tmp_path / "001-read-crop0.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    traced = json.loads((tmp_path / "001-read.json").read_text())
+    assert "Transcribe" in traced["prompt"]
+    assert traced["thinking"] == "It is a digit."
+    assert traced["response"]["choices"][0]["message"]["content"] == "5"

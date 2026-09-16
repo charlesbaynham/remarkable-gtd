@@ -134,6 +134,21 @@ reasons about your vault rather than reading glyphs, so it is worth a
 stronger model), `tesseract`, or `null` (flag inked regions, transcribe
 nothing).
 
+**Reasoning** is on by default for the OpenRouter engine.
+`OPENROUTER_REASONING` takes an effort level (`low`/`medium`/`high`), a token
+budget (`1500`), or `off`. ⚠️ Reasoning tokens are charged against
+`max_tokens`, so enabling it *without* raising the budget truncates the reply
+mid-JSON (`finish_reason: length`) and the ✎ EDIT agent's operations are lost —
+the engine adds `REASONING_TOKEN_HEADROOM` on top of the answer budget
+whenever reasoning is on. Measured on a real sheet: the EDIT call spends
+~600–950 reasoning tokens, a slot transcription ~300–2000, and turning it on
+roughly triples the wall-clock of a scan.
+
+**Tracing.** Set `OPENROUTER_TRACE_DIR` and every call writes
+`NNN-{read,interpret}.json` — the prompt, the model, the reasoning block sent,
+the model's thinking, and the complete raw reply — beside `NNN-…-crop0.png`,
+the exact pixels sent. Nothing else in the pipeline keeps any of that.
+
 ### Check alignment by eye
 
 ```bash
