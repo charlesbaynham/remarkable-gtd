@@ -7,7 +7,10 @@ requests per sheet. Engines:
 
 - ``openrouter`` — a vision LLM through OpenRouter (default: Google Gemini
   Flash). Needs ``OPENROUTER_API_KEY``; ``OPENROUTER_MODEL`` overrides the
-  model id.
+  model id. The ✎ EDIT call reasons by default (``OPENROUTER_REASONING``);
+  slot transcription does not (``OPENROUTER_READ_REASONING``). Set
+  ``OPENROUTER_TRACE_DIR`` to dump every call — prompt, crop, raw reply and
+  the model's thinking — for when a reading needs explaining.
 - ``tesseract`` — offline OCR via pytesseract (poor on handwriting; kept as a
   no-network fallback).
 - ``null`` — transcribes nothing; keeps the ink-trigger logic testable.
@@ -37,12 +40,45 @@ import re
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import numpy as np
 
 DEFAULT_OPENROUTER_MODEL = "google/gemini-3.5-flash"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Reasoning earns its keep on `interpret`, which reasons about the vault. On
+# `read` — transcribing glyphs — it changed no transcription in testing while
+# costing ~44% of the call, so it is off there by default.
+DEFAULT_EDIT_REASONING = "medium"
+DEFAULT_READ_REASONING = "off"
+
+READ_ANSWER_TOKENS = 300
+EDIT_ANSWER_TOKENS = 900
+# Reasoning tokens are charged against max_tokens, so a budget sized for the
+# answer alone truncates it mid-JSON once reasoning is on (finish_reason
+# "length"), and the edit agent's operations are lost.
+REASONING_TOKEN_HEADROOM = 2500
+
+
+def _reasoning_block(explicit, env_var: str, default: str) -> dict | None:
+    if isinstance(explicit, dict):
+        return explicit
+    return parse_reasoning(explicit or os.environ.get(env_var), default)
+
+
+def parse_reasoning(value: str | None, default: str) -> dict | None:
+    """A reasoning setting -> an OpenRouter reasoning block, or None.
+
+    Accepts an effort level (``low``/``medium``/``high``), a token budget
+    (``1500``), or ``off``.
+    """
+    setting = (value if value is not None else default).strip().lower()
+    if setting in ("off", "none", "no", "0", "false"):
+        return None
+    if setting.isdigit():
+        return {"enabled": True, "max_tokens": int(setting)}
+    return {"enabled": True, "effort": setting}
 
 # What the model is told about each region kind.
 _HINT_PROMPTS = {
@@ -383,6 +419,9 @@ class OpenRouterEngine:
         timeout: float = 60.0,
         retries: int = 2,
         url: str = OPENROUTER_URL,
+        reasoning: str | dict | None = None,
+        read_reasoning: str | dict | None = None,
+        trace_dir: str | Path | None = None,
     ):
         self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
         if not self.api_key:
@@ -400,9 +439,75 @@ class OpenRouterEngine:
         self.retries = retries
         self.url = url
         self.requests_made = 0
+        self.edit_reasoning = _reasoning_block(
+            reasoning, "OPENROUTER_REASONING", DEFAULT_EDIT_REASONING
+        )
+        self.read_reasoning = _reasoning_block(
+            read_reasoning, "OPENROUTER_READ_REASONING", DEFAULT_READ_REASONING
+        )
+        trace = trace_dir or os.environ.get("OPENROUTER_TRACE_DIR")
+        self.trace_dir = Path(trace) if trace else None
+        if self.trace_dir:
+            self.trace_dir.mkdir(parents=True, exist_ok=True)
+
+    def _trace_request(self, payload: dict) -> str | None:
+        """Save the crops this call is about to send; returns its trace stem."""
+        if not self.trace_dir:
+            return None
+        kind = "interpret" if "response_format" in payload else "read"
+        stem = f"{self.requests_made + 1:03d}-{kind}"
+        crops = [
+            part["image_url"]["url"] for part in payload["messages"][0]["content"]
+            if part.get("type") == "image_url"
+        ]
+        for i, url in enumerate(crops):
+            (self.trace_dir / f"{stem}-crop{i}.png").write_bytes(
+                base64.b64decode(url.split(",", 1)[1])
+            )
+        return stem
+
+    def _trace_reply(self, stem: str, payload: dict, data: dict) -> None:
+        """Save the prompt, the raw reply and the model's thinking."""
+        prompt = "\n".join(
+            part["text"] for part in payload["messages"][0]["content"]
+            if part.get("type") == "text"
+        )
+        message = (data.get("choices") or [{}])[0].get("message") or {}
+        (self.trace_dir / f"{stem}.json").write_text(json.dumps({
+            "model": payload["model"],
+            "reasoning": payload.get("reasoning"),
+            "max_tokens": payload.get("max_tokens"),
+            "prompt": prompt,
+            "thinking": message.get("reasoning") or message.get("reasoning_details"),
+            "response": data,
+        }, indent=2), encoding="utf-8")
+
+    def _payload(self, model, prompt, image, answer_tokens, reasoning, **extra) -> dict:
+        payload = {
+            "model": model,
+            "temperature": 0,
+            "max_tokens": answer_tokens + (REASONING_TOKEN_HEADROOM if reasoning else 0),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64," + _to_png_b64(image)},
+                        },
+                    ],
+                }
+            ],
+            **extra,
+        }
+        if reasoning:
+            payload["reasoning"] = reasoning
+        return payload
 
     def _post(self, payload: dict) -> dict:
         body = json.dumps(payload).encode("utf-8")
+        traced = self._trace_request(payload)
         req = urllib.request.Request(
             self.url,
             data=body,
@@ -418,7 +523,10 @@ class OpenRouterEngine:
         for attempt in range(self.retries + 1):
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                    data = json.loads(resp.read().decode("utf-8"))
+                if traced:
+                    self._trace_reply(traced, payload, data)
+                return data
             except urllib.error.HTTPError as exc:
                 last_err = exc
                 if exc.code in (429, 500, 502, 503, 504) and attempt < self.retries:
@@ -434,23 +542,10 @@ class OpenRouterEngine:
         raise RuntimeError(f"OpenRouter request failed: {last_err}")
 
     def read(self, image, hint=None, context=None) -> str:
-        payload = {
-            "model": self.model,
-            "temperature": 0,
-            "max_tokens": 300,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": build_prompt(hint, context)},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": "data:image/png;base64," + _to_png_b64(image)},
-                        },
-                    ],
-                }
-            ],
-        }
+        payload = self._payload(
+            self.model, build_prompt(hint, context), image,
+            READ_ANSWER_TOKENS, self.read_reasoning,
+        )
         data = self._post(payload)
         self.requests_made += 1
         try:
@@ -469,27 +564,14 @@ class OpenRouterEngine:
         today: str | None = None,
     ) -> dict:
         """Structured reading of a whole ✎-EDIT row: see :data:`EDIT_SCHEMA`."""
-        payload = {
-            "model": self.edit_model,
-            "temperature": 0,
-            "max_tokens": 900,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": build_edit_prompt(task, vocabulary, today)},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": "data:image/png;base64," + _to_png_b64(image)},
-                        },
-                    ],
-                }
-            ],
-            "response_format": {
+        payload = self._payload(
+            self.edit_model, build_edit_prompt(task, vocabulary, today), image,
+            EDIT_ANSWER_TOKENS, self.edit_reasoning,
+            response_format={
                 "type": "json_schema",
                 "json_schema": {"name": "gtd_edit", "strict": True, "schema": EDIT_SCHEMA},
             },
-        }
+        )
         data = self._post(payload)
         self.requests_made += 1
         try:

@@ -303,3 +303,70 @@ def test_openrouter_interpret_unparseable_reply_raises(monkeypatch):
         eng = ocr.OpenRouterEngine()
         with pytest.raises(RuntimeError):
             eng.interpret(np.zeros((10, 10), np.uint8), {"act": "x", "bucket": "next"})
+
+
+@pytest.mark.parametrize("setting,default,expected", [
+    (None, "medium", {"enabled": True, "effort": "medium"}),
+    (None, "off", None),
+    ("high", "off", {"enabled": True, "effort": "high"}),
+    ("1500", "off", {"enabled": True, "max_tokens": 1500}),
+    ("off", "medium", None),
+])
+def test_parse_reasoning(setting, default, expected):
+    assert ocr.parse_reasoning(setting, default) == expected
+
+
+def _capture(monkeypatch, call, trace_dir=None):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    captured: dict = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        reply = {"choices": [{"message": {
+            "content": json.dumps({"understood": False, "operations": []}),
+            "reasoning": "It is a digit.",
+        }}]}
+        return _FakeResponse(json.dumps(reply).encode("utf-8"))
+
+    img = np.zeros((10, 10), np.uint8)
+    with mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen):
+        eng = ocr.OpenRouterEngine(trace_dir=trace_dir)
+        eng.read(img) if call == "read" else eng.interpret(img, {"id": "NA-01"})
+    return captured["body"]
+
+
+def test_read_does_not_reason_by_default(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_READ_REASONING", raising=False)
+    body = _capture(monkeypatch, "read")
+    assert "reasoning" not in body
+    assert body["max_tokens"] == ocr.READ_ANSWER_TOKENS
+
+
+def test_interpret_reasons_by_default_with_room_for_the_answer(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_REASONING", raising=False)
+    body = _capture(monkeypatch, "interpret")
+    assert body["reasoning"] == {"enabled": True, "effort": "medium"}
+    assert body["max_tokens"] == ocr.EDIT_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM
+    assert body["response_format"]["json_schema"]["strict"] is True
+
+
+def test_read_reasoning_can_be_turned_on(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_READ_REASONING", "high")
+    body = _capture(monkeypatch, "read")
+    assert body["reasoning"] == {"enabled": True, "effort": "high"}
+    assert body["max_tokens"] == ocr.READ_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM
+
+
+def test_interpret_reasoning_can_be_turned_off(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_REASONING", "off")
+    body = _capture(monkeypatch, "interpret")
+    assert "reasoning" not in body
+    assert body["max_tokens"] == ocr.EDIT_ANSWER_TOKENS
+
+
+def test_trace_dir_keeps_prompt_crop_and_thinking(monkeypatch, tmp_path):
+    _capture(monkeypatch, "read", trace_dir=tmp_path)
+    assert (tmp_path / "001-read-crop0.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    traced = json.loads((tmp_path / "001-read.json").read_text())
+    assert "Transcribe" in traced["prompt"]
+    assert traced["thinking"] == "It is a digit."
