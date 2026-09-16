@@ -33,10 +33,12 @@
 </div>
 {%- endmacro %}
 
-{% macro gutter(cat, tid) -%}
+{#- `capture` marks a blank write-in row: it gets the bucket's routing
+    boxes but no ✎ Edit, since there is no printed row to re-read. -#}
+{% macro gutter(cat, tid, capture=False) -%}
 <div class="gut">
 {%- if cat == 'inbox' -%}
-  {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}
+  {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}{% if not capture %}{{ cell(tid, 'edit', '✎', 'Edit') }}{% endif %}
 {%- elif cat == 'delegated' -%}
   {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_me', '↩', 'To me') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
 {%- elif cat == 'tickler' -%}
@@ -104,7 +106,7 @@
       <div class="act" data-roi="{{ t.id }}:act">{{ t.act }}{% if t.badge %} <span class="badge">{{ t.badge }}</span>{% endif %}</div>
       {% endif %}
     </div>
-    {% if not t.bare %}{{ gutter(cat, t.id) }}{% endif %}
+    {% if not t.bare %}{{ gutter(cat, t.id, t.capture) }}{% endif %}
   </div>
   {% if not t.bare %}{{ fields(cat, t) }}{% endif %}
 </div>
@@ -117,6 +119,7 @@
   <span class="k"><span class="kb">→</span><span class="kl">to Delegated</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Defer to Tickler</span></span>
   <span class="k"><span class="kb">✗</span><span class="kl">Drop</span></span>
+  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">New = create this project</span></span>
 {%- elif cat == 'delegated' -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
