@@ -43,15 +43,19 @@ def test_summary_links_to_each_project_and_back(rendered_sheet, manifest):
     summary_idx = pages.index(make_page_key("projects", "2026-05-30"))
     p1_idx = pages.index(make_page_key("project-01", "2026-05-30"))
     p2_idx = pages.index(make_page_key("project-02", "2026-05-30"))
+    np_idx = pages.index(make_page_key("new-projects", "2026-05-30"))
 
     links = _links(pdf_path)
     assert (summary_idx, p1_idx) in links
     assert (summary_idx, p2_idx) in links
     assert (p1_idx, summary_idx) in links
     assert (p2_idx, summary_idx) in links
+    # The summary also points at the New Projects page, which points back.
+    assert (summary_idx, np_idx) in links
+    assert (np_idx, summary_idx) in links
     # No stray links anywhere else.
-    assert {src for src, _ in links} == {summary_idx, p1_idx, p2_idx}
-    assert len(links) == 4
+    assert {src for src, _ in links} == {summary_idx, p1_idx, p2_idx, np_idx}
+    assert len(links) == 6
 
 
 def test_link_rects_match_the_manifest_rois(rendered_sheet, manifest):

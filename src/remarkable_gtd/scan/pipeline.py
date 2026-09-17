@@ -16,7 +16,12 @@ import numpy as np
 from remarkable_gtd.common.schema import parse_page_key
 from remarkable_gtd.scan import ink as ink_mod
 from remarkable_gtd.scan import qr as qr_mod
-from remarkable_gtd.scan.decisions import build_decisions, resolve_task
+from remarkable_gtd.scan.decisions import (
+    ai_requested,
+    build_decisions,
+    build_suggestion,
+    resolve_task,
+)
 from remarkable_gtd.scan.manifest_io import get_page, list_page_keys
 from remarkable_gtd.scan.ocr import OcrEngine, get_engine
 from remarkable_gtd.scan.rectify import find_reg_marks, rectify
@@ -109,7 +114,7 @@ def _task_rois(rois: dict, task_id: str) -> dict[str, dict]:
 def row_roi(
     task_rois: dict, page_w_frac_pad: float = 0.01, page_h_frac_pad: float = 0.003
 ) -> dict:
-    """The ROI covering a task's whole row, for a ✎-EDIT crop.
+    """The ROI covering a task's whole row, for a ✦-AI crop.
 
     Uses the generator's own ``row`` ROI when present. Sheets printed before
     it existed carry no ``row`` ROI, so the fallback unions every ROI the
@@ -127,7 +132,7 @@ def row_roi(
     return {"x": x1, "y": y1, "w": x2 - x1, "h": y2 - y1}
 
 
-_FAILED_EDIT = {
+_FAILED_AI = {
     "handwriting": "",
     "understood": False,
     "confidence": 0.0,
@@ -135,18 +140,35 @@ _FAILED_EDIT = {
 }
 
 
-def _edit_act_text(edit: dict) -> str | None:
-    """The new wording an understood edit asks for, if any.
+def _ai_act_text(reading: dict) -> str | None:
+    """The new wording an understood AI reading asks for, if any.
 
-    ``gtd.edit/2`` has no top-level text: new wording travels on whichever
+    ``gtd.ai/3`` has no top-level text: new wording travels on whichever
     operation carries it (an ``update``, or the ``text`` of a re-route).
     """
-    if not edit.get("understood"):
+    if not reading.get("understood"):
         return None
-    for op in edit.get("operations") or []:
+    for op in reading.get("operations") or []:
         if isinstance(op, dict) and op.get("text"):
             return op["text"]
     return None
+
+
+def _call_interpret(interpret_fn, image, task_entry, vocabulary, today, suggestion):
+    """Call an engine's ``interpret``, passing ``suggestion`` if it takes one.
+
+    The keyword arrived with the AI escape hatch; an engine written against
+    the older signature still works, just without the deterministic hint.
+    """
+    import inspect
+
+    kwargs: dict = {}
+    try:
+        if "suggestion" in inspect.signature(interpret_fn).parameters:
+            kwargs["suggestion"] = suggestion
+    except (TypeError, ValueError):  # a builtin or C-implemented callable
+        pass
+    return interpret_fn(image, task_entry, vocabulary, today, **kwargs)
 
 
 def run_scan(
@@ -168,7 +190,7 @@ def run_scan(
         tasks: The ``gtd.tasks/1`` document (``{"tasks": {id: entry},
             "context": {...}}``). Entries give the printed text for the
             legacy act-crop OCR fallback and the fields/vocabulary handed to
-            an engine's ``interpret`` when a row's Edit box is ticked.
+            an engine's ``interpret`` when a row's ✦ AI box is ticked.
 
     Returns:
         The decisions document (schema ``gtd.decisions/1``).
@@ -258,7 +280,7 @@ def run_scan(
                 threshold=cfg.ink_fill_threshold,
             )
 
-        edited = ticks.get("edit", (0.0, False))[1]
+        ai = ai_requested(ticks)
 
         # Slots: ink presence triggers OCR of that slot.
         field_texts: dict[str, dict] = {}
@@ -285,7 +307,7 @@ def run_scan(
         # transcribe it only if there is ink.
         act_text = None
         capture_inked: bool | None = None
-        if task_bucket == "capture" and "act" in t_rois:
+        if task_bucket in ("capture", "newproj") and "act" in t_rois:
             fill, capture_inked = ink_mod.detect_box(
                 warped_binary, t_rois["act"], canvas,
                 inner_inset_frac=cfg.slot_inset_frac,
@@ -294,28 +316,34 @@ def run_scan(
             if capture_inked:
                 act_text = ocr_crop(t_rois["act"], "capture", inset_px=0)
 
-        # Edit ticked: ask the engine to interpret the whole row; fall back
-        # to re-reading just the action text if it can't or won't.
-        edit: dict | None = None
-        if edited:
+        # ✦ AI ticked: the deterministic classifier is switched off for
+        # this row — it still runs, but only to produce the `suggestion`
+        # handed to the agent as a labelled hint. The agent's operations
+        # are the row's single write (see decisions.resolve_task).
+        ai_reading: dict | None = None
+        if ai:
+            suggestion = build_suggestion(
+                task_id, ticks, task_bucket, field_texts or None, act_text
+            )
             interpret_fn = getattr(ocr, "interpret", None)
             if interpret_fn is not None:
                 roi = row_roi(t_rois)
                 x1, y1, x2, y2 = ink_mod.roi_to_pixels(roi, canvas)
                 try:
-                    edit = interpret_fn(
-                        warped_gray[y1:y2, x1:x2], task_entry, vocabulary, parsed["date"]
+                    ai_reading = _call_interpret(
+                        interpret_fn, warped_gray[y1:y2, x1:x2],
+                        task_entry, vocabulary, parsed["date"], suggestion,
                     )
                 except Exception as exc:
-                    edit = {**_FAILED_EDIT, "note": f"interpretation failed: {exc}"}
-                    warnings.append(f"{task_id}: edit interpretation failed — {exc}")
-            if interpret_fn is None or edit is None:
+                    ai_reading = {**_FAILED_AI, "note": f"interpretation failed: {exc}"}
+                    warnings.append(f"{task_id}: AI interpretation failed — {exc}")
+            if interpret_fn is None or ai_reading is None:
                 if "act" in t_rois:
                     act_text = ocr_crop(
                         t_rois["act"], "act", inset_px=0, context=task_entry.get("act")
                     )
             else:
-                new_text = _edit_act_text(edit)
+                new_text = _ai_act_text(ai_reading)
                 if new_text is not None:
                     act_text = new_text
 
@@ -323,7 +351,7 @@ def run_scan(
             task_id, ticks, task_bucket,
             field_texts=field_texts or None,
             act_text=act_text,
-            edit=edit,
+            ai_reading=ai_reading,
         )
         if capture_inked is not None:
             entry["inked"] = capture_inked

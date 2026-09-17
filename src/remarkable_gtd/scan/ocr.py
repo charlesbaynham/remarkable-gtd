@@ -2,12 +2,12 @@
 
 The vision pipeline only calls an engine where ink is present in a write-in
 region (metadata slots, capture lines, or the action text of a row whose
-Edit box is ticked), so a hosted vision model costs a handful of tiny image
+✦ AI box is ticked), so a hosted vision model costs a handful of tiny image
 requests per sheet. Engines:
 
 - ``openrouter`` — a vision LLM through OpenRouter (default: Google Gemini
   Flash). Needs ``OPENROUTER_API_KEY``; ``OPENROUTER_MODEL`` overrides the
-  model id. The ✎ EDIT call reasons by default (``OPENROUTER_REASONING``);
+  model id. The ✦ AI call reasons by default (``OPENROUTER_REASONING``);
   slot transcription does not (``OPENROUTER_READ_REASONING``). Set
   ``OPENROUTER_TRACE_DIR`` to dump every call — prompt, crop, raw reply and
   the model's thinking — for when a reading needs explaining.
@@ -22,13 +22,19 @@ edited action) so a model can be told what it is looking at.
 
 Deterministic first, AI only by explicit opt-in: ticks, QRs and fixed slots
 are read by plain Python, and a model is called only to transcribe an inked
-write-in region or — when I ticked ✎ EDIT, explicitly asking for it — to
+write-in region or — when I ticked ✦ AI, explicitly asking for it — to
 interpret a whole row. That second call is ``interpret``, which crops the
-entire row and asks for a structured ``gtd.edit/2`` reading
-(:data:`EDIT_SCHEMA`) via OpenRouter's ``json_schema`` response format: the
+entire row and asks for a structured ``gtd.ai/3`` reading
+(:data:`AI_SCHEMA`) via OpenRouter's ``json_schema`` response format: the
 verbatim handwriting, whether it was understood, and a list of vault
 operations to apply. An unclear row comes back ``understood: false`` with no
 operations rather than a guess.
+
+✦ AI is an escape hatch, not an annotation: on such a row the deterministic
+classifier does not act. It still runs — its reading is passed to
+:func:`build_ai_prompt` as ``suggestion``, plainly labelled as a guess the
+agent may ignore — but the agent's operations are the only write. That is
+why the brief below tells the model that it, and not the gutter, decides.
 """
 from __future__ import annotations
 
@@ -50,14 +56,14 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # Reasoning earns its keep on `interpret`, which reasons about the vault. On
 # `read` — transcribing glyphs — it changed no transcription in testing while
 # costing ~44% of the call, so it is off there by default.
-DEFAULT_EDIT_REASONING = "medium"
+DEFAULT_AI_REASONING = "medium"
 DEFAULT_READ_REASONING = "off"
 
 READ_ANSWER_TOKENS = 300
-EDIT_ANSWER_TOKENS = 900
+AI_ANSWER_TOKENS = 900
 # Reasoning tokens are charged against max_tokens, so a budget sized for the
 # answer alone truncates it mid-JSON once reasoning is on (finish_reason
-# "length"), and the edit agent's operations are lost.
+# "length"), and the AI agent's operations are lost.
 REASONING_TOKEN_HEADROOM = 2500
 
 
@@ -106,9 +112,9 @@ _BASE_PROMPT = (
     "borders. If there is no legible handwriting reply with exactly: <empty>"
 )
 
-EDIT_SCHEMA_VERSION = "gtd.edit/2"
+AI_SCHEMA_VERSION = "gtd.ai/3"
 
-# Vault operations the edit agent may ask for. The whole vocabulary is
+# Vault operations the AI agent may ask for. The whole vocabulary is
 # listed to the model, with the row's own handle implied for the ones that
 # act on "this item".
 OPS = (
@@ -158,7 +164,7 @@ _OP_SCHEMA = {
     },
 }
 
-EDIT_SCHEMA = {
+AI_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": ["handwriting", "understood", "confidence", "note", "operations"],
@@ -224,30 +230,93 @@ update, complete, delete and move):
 """
 
 
-def build_edit_prompt(
-    task: dict, vocabulary: dict | None = None, today: str | None = None
+_ACTION_GLOSS = {
+    "none": "no routing box ticked",
+    "done": "✓ Done",
+    "activate": "→ Now (activate from the Tickler)",
+    "to_next": "→ Next Actions",
+    "to_me": "↩ Back to me",
+    "to_deleg": "→ Delegated",
+    "drop": "✗ Drop",
+    "defer": "Defer to the Tickler",
+}
+
+
+def describe_suggestion(suggestion: dict | None) -> str:
+    """Render the deterministic reading of the row as a labelled *guess*.
+
+    The tick boxes on an ✦ AI row are still read by plain Python, and what
+    they say is usually right — so it is worth telling the agent. But it is
+    a suggestion and nothing more: the wording here must never read as an
+    instruction, because on an AI row the agent owns the only write.
+    """
+    if not suggestion:
+        return ""
+    action = suggestion.get("action") or "none"
+    gloss = _ACTION_GLOSS.get(action, action)
+    period = suggestion.get("period") or suggestion.get("defer_period")
+    if action == "defer" and period:
+        gloss += f" for {period}"
+    bits = [f"routing boxes: {gloss}"]
+    if suggestion.get("new_project"):
+        bits.append("the NEW box is ticked (start a project)")
+    fields = suggestion.get("fields") or {}
+    written = ", ".join(f"{k.upper()}={v!r}" for k, v in sorted(fields.items()) if v)
+    if written:
+        bits.append(f"write-in boxes: {written}")
+    if suggestion.get("text"):
+        bits.append(f"the write-in line reads {suggestion['text']!r}")
+    return (
+        "\nFOR CONTEXT ONLY — a suggestion, not an instruction. Before "
+        "calling you, plain Python read this row's boxes and would have "
+        "done this: " + "; ".join(bits) + ". That guess has NOT been "
+        "applied and will NOT be applied: you are the only thing that "
+        "writes to my vault for this row. Use it as a hint about what I "
+        "probably meant, agree with it or overrule it as the handwriting "
+        "warrants, and if the handwriting says something else entirely, "
+        "follow the handwriting.\n"
+    )
+
+
+def build_ai_prompt(
+    task: dict,
+    vocabulary: dict | None = None,
+    today: str | None = None,
+    suggestion: dict | None = None,
 ) -> str:
-    """The brief sent alongside a whole-row crop when ✎ EDIT is ticked.
+    """The brief sent alongside a whole-row crop when ✦ AI is ticked.
 
     This is the one place in the pipeline where a model is asked to decide
     anything: every other mark on the sheet is a tick box, a QR or a fixed
     slot read deterministically. So the brief spells out how the system
     works, what each operation means, and that saying "not understood" is
     always preferable to guessing.
+
+    ✦ AI short-circuits the deterministic path entirely, so the agent's
+    scope here is arbitrary: create a project, rename one, split the row
+    into several actions. ``suggestion`` (the deterministic reading, see
+    :func:`describe_suggestion`) rides along as a labelled hint only.
     """
     projects = (vocabulary or {}).get("projects") or []
     people = (vocabulary or {}).get("people") or []
     proj_list = ", ".join(projects) if projects else "none"
     people_list = ", ".join(people) if people else "none"
     return (
-        "You are the editing agent for a paper GTD (Getting Things Done) "
-        "system. The crop shows ONE row of a printed sheet that I annotated "
-        "by hand on an e-ink tablet: the printed item text, a gutter of tick "
-        "boxes (the ✎ EDIT box is ticked, which is the only reason you are "
-        "being asked) and, on most rows, labelled write-in boxes PRIORITY, "
-        "DUE, PROJECT, TO. Read my handwriting — new words, strike-throughs, "
+        "You are the agent for a paper GTD (Getting Things Done) system. "
+        "The crop shows ONE row of a printed sheet that I annotated by hand "
+        "on an e-ink tablet: the printed item text, a gutter of tick boxes "
+        "(the ✦ AI box is ticked, which is the only reason you are being "
+        "asked) and, on most rows, labelled write-in boxes PRIORITY, DUE, "
+        "PROJECT, TO. Read my handwriting — new words, strike-throughs, "
         "arrows, anything in or near the boxes — and say what should happen "
         "to my vault.\n\n"
+        "Ticking ✦ AI means I did not want this row handled by the rigid "
+        "box-by-box rules, so those rules have been switched off for it: "
+        "nothing else will touch this row, and whatever you return is the "
+        "only change that gets made. Your scope is therefore whatever the "
+        "handwriting implies — amend the item, start a project, rename an "
+        "existing one, split the row into several actions, or all of "
+        "those.\n\n"
         + _GTD_BRIEF
         + "\nThe printed row as it stands: "
         f"{_bucket_description(task)}; text \"{task.get('act', '')}\"; "
@@ -256,7 +325,9 @@ def build_edit_prompt(
         f"delegated to {task.get('to') or 'nobody'}.\n\n"
         f"Today is {today or 'unknown'}. My existing projects, spelled "
         f"exactly as they are named: {proj_list}. People I delegate to: "
-        f"{people_list}.\n\n"
+        f"{people_list}.\n"
+        + describe_suggestion(suggestion)
+        + "\n"
         "Answer as JSON. handwriting = verbatim transcription of everything "
         "handwritten in the crop. confidence = 0..1. note = one sentence on "
         "how you read the row. operations = the list of operations to apply: "
@@ -277,8 +348,10 @@ def build_edit_prompt(
         "- Dates are YYYY-MM-DD, resolved from today.\n"
         "- Prefer update over delete-and-recreate; prefer one operation over "
         "several when one says it.\n"
-        "- A tick in a gutter box is read separately and reliably without "
-        "you, so do not repeat it: only report what the handwriting says."
+        "- You are the only writer for this row: a gutter tick will NOT be "
+        "applied behind you, so anything that should happen — including "
+        "what a routing box plainly asks for — must be in your operations "
+        "or it will not happen at all."
     )
 
 
@@ -315,7 +388,7 @@ class NullEngine:
     def read(self, image, hint=None, context=None) -> str:
         return ""
 
-    def interpret(self, image, task, vocabulary=None, today=None) -> dict | None:
+    def interpret(self, image, task, vocabulary=None, today=None, suggestion=None) -> dict | None:
         return None
 
 
@@ -400,10 +473,11 @@ class OpenRouterEngine:
 
     - ``OPENROUTER_API_KEY`` — required.
     - ``OPENROUTER_MODEL`` — model id, default :data:`DEFAULT_OPENROUTER_MODEL`.
-    - ``OPENROUTER_EDIT_MODEL`` — model id for :meth:`interpret` only, so the
-      ✎ EDIT agent (which reasons about the vault, not just glyphs) can be a
-      stronger model than the one transcribing slots. Falls back to
-      ``OPENROUTER_MODEL``, then to the default.
+    - ``OPENROUTER_AI_MODEL`` — model id for :meth:`interpret` only, so the
+      ✦ AI agent (which reasons about the vault, not just glyphs) can be a
+      stronger model than the one transcribing slots. Falls back to the
+      pre-rename ``OPENROUTER_EDIT_MODEL``, then ``OPENROUTER_MODEL``, then
+      to the default.
 
     Each ``read`` is one chat-completion request carrying one small PNG, so a
     typical sheet costs a few hundred image tokens in total.
@@ -415,7 +489,7 @@ class OpenRouterEngine:
         self,
         api_key: str | None = None,
         model: str | None = None,
-        edit_model: str | None = None,
+        ai_model: str | None = None,
         timeout: float = 60.0,
         retries: int = 2,
         url: str = OPENROUTER_URL,
@@ -429,9 +503,10 @@ class OpenRouterEngine:
                 "OpenRouter OCR needs OPENROUTER_API_KEY in the environment"
             )
         self.model = model or os.environ.get("OPENROUTER_MODEL") or DEFAULT_OPENROUTER_MODEL
-        self.edit_model = (
-            edit_model
-            or os.environ.get("OPENROUTER_EDIT_MODEL")
+        self.ai_model = (
+            ai_model
+            or os.environ.get("OPENROUTER_AI_MODEL")
+            or os.environ.get("OPENROUTER_EDIT_MODEL")  # pre-rename name
             or os.environ.get("OPENROUTER_MODEL")
             or DEFAULT_OPENROUTER_MODEL
         )
@@ -439,8 +514,8 @@ class OpenRouterEngine:
         self.retries = retries
         self.url = url
         self.requests_made = 0
-        self.edit_reasoning = _reasoning_block(
-            reasoning, "OPENROUTER_REASONING", DEFAULT_EDIT_REASONING
+        self.ai_reasoning = _reasoning_block(
+            reasoning, "OPENROUTER_REASONING", DEFAULT_AI_REASONING
         )
         self.read_reasoning = _reasoning_block(
             read_reasoning, "OPENROUTER_READ_REASONING", DEFAULT_READ_REASONING
@@ -562,14 +637,17 @@ class OpenRouterEngine:
         task: dict,
         vocabulary: dict | None = None,
         today: str | None = None,
+        suggestion: dict | None = None,
     ) -> dict:
-        """Structured reading of a whole ✎-EDIT row: see :data:`EDIT_SCHEMA`."""
+        """Structured reading of a whole ✦-AI row: see :data:`AI_SCHEMA`."""
         payload = self._payload(
-            self.edit_model, build_edit_prompt(task, vocabulary, today), image,
-            EDIT_ANSWER_TOKENS, self.edit_reasoning,
+            self.ai_model,
+            build_ai_prompt(task, vocabulary, today, suggestion),
+            image,
+            AI_ANSWER_TOKENS, self.ai_reasoning,
             response_format={
                 "type": "json_schema",
-                "json_schema": {"name": "gtd_edit", "strict": True, "schema": EDIT_SCHEMA},
+                "json_schema": {"name": "gtd_ai", "strict": True, "schema": AI_SCHEMA},
             },
         )
         data = self._post(payload)
@@ -586,10 +664,10 @@ class OpenRouterEngine:
         except json.JSONDecodeError:
             parsed = None
         if not isinstance(parsed, dict) or not isinstance(parsed.get("understood"), bool):
-            raise RuntimeError(f"OpenRouter edit reply was not valid JSON: {text[:200]}")
+            raise RuntimeError(f"OpenRouter AI reply was not valid JSON: {text[:200]}")
         if not isinstance(parsed.get("operations"), list):
             raise RuntimeError(
-                f"OpenRouter edit reply has no operations list: {text[:200]}"
+                f"OpenRouter AI reply has no operations list: {text[:200]}"
             )
         return parsed
 

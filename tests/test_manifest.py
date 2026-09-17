@@ -8,21 +8,22 @@ from tests.conftest import needs_chromium
 
 pytestmark = needs_chromium
 
-# A blank capture row carries the inbox routing boxes but no ✎ Edit —
+# A blank capture row carries the inbox routing boxes but no ✦ AI —
 # there is no printed row to re-read.
 INBOX_ROUTING = {"to_next", "to_deleg", "drop", "defer_1w", "defer_1m", "defer_1q"}
 EXPECTED_GUTTERS = {
-    "inbox": INBOX_ROUTING | {"edit"},
-    "next": {"done", "to_deleg", "edit", "defer_1w", "defer_1m", "defer_1q"},
-    "delegated": {"done", "to_me", "edit", "defer_1w", "defer_1m", "defer_1q"},
-    "tickler": {"activate", "done", "edit", "redefer_1w", "redefer_1m", "redefer_1q"},
-    "project": {"done", "edit"},
+    "inbox": INBOX_ROUTING | {"ai"},
+    "next": {"done", "to_deleg", "ai", "defer_1w", "defer_1m", "defer_1q"},
+    "delegated": {"done", "to_me", "ai", "defer_1w", "defer_1m", "defer_1q"},
+    "tickler": {"activate", "done", "ai", "redefer_1w", "redefer_1m", "redefer_1q"},
+    "project": {"done", "ai"},
+    "newproj": INBOX_ROUTING | {"ai"},
 }
 PAGE_LEVEL = {"reg:tl", "reg:tr", "reg:bl", "reg:br", "page:qr"}
 
 # tasks.min.json carries two projects, so the sheet is 4 + 1 + 2 pages.
 EXPECTED_PAGES = ("inbox", "next", "delegated", "tickler",
-                  "projects", "project-01", "project-02")
+                  "projects", "project-01", "project-02", "new-projects")
 
 
 def test_manifest_shape(manifest):
@@ -103,7 +104,7 @@ def test_capture_rows_on_inbox(manifest):
         for suffix in ("qr", "act", "row", "slot_project", "new_project",
                        *INBOX_ROUTING):
             assert f"{tid}:{suffix}" in rois, f"missing {tid}:{suffix}"
-        assert f"{tid}:edit" not in rois
+        assert f"{tid}:ai" not in rois
         # the blank action area is a decent slab to write on
         assert rois[f"{tid}:act"]["w"] > 0.3
 
@@ -123,7 +124,7 @@ def test_project_pages_and_summary(manifest):
     summary = manifest["pages"][make_page_key("projects", "2026-05-30")]
     assert summary["scan"] is False
     assert summary["bucket"] == "projects"
-    assert {"link:P01", "link:P02"} <= set(summary["rois"])
+    assert {"link:P01", "link:P02", "link:new-projects"} <= set(summary["rois"])
 
     proj = manifest["pages"][make_page_key("project-01", "2026-05-30")]
     assert proj["scan"] is True
@@ -139,6 +140,36 @@ def test_project_pages_and_summary(manifest):
     # add-lines are bare: an action area and nothing else to tick
     assert "P01-C1:act" in proj["rois"]
     assert "P01-C1:done" not in proj["rois"]
+
+
+def test_new_projects_page_is_last_and_scannable(manifest):
+    """Blank rows for projects that do not exist yet, on the sheet's last page.
+
+    It is appended, never inserted: ``scan_pdf`` matches PDF pages to
+    manifest keys by position, so every existing page must keep its index.
+    """
+    keys = list(manifest["pages"])
+    key = make_page_key("new-projects", "2026-05-30")
+    assert keys[-1] == key
+    page = manifest["pages"][key]
+    assert page["scan"] is True
+    assert page["bucket"] == "newproj"
+    assert page["page_no"] == len(keys)
+    assert "project" not in page
+    assert "link:projects" in page["rois"]
+
+    ids = {k.split(":", 1)[0] for k in page["rois"] if ":" in k
+           and not k.startswith(("reg:", "page:", "link:"))}
+    assert ids == {f"NP-0{i}" for i in range(1, 7)}
+    # Every row is a write-in line carrying the Inbox routing gutter, the
+    # ✦ AI escape hatch and the metadata slots — but no NEW box, because
+    # the whole page means "new".
+    for verb in EXPECTED_GUTTERS["newproj"]:
+        assert f"NP-01:{verb}" in page["rois"], f"missing NP-01:{verb}"
+    for extra in ("qr", "act", "row", "slot_priority", "slot_due",
+                  "slot_project", "slot_to"):
+        assert f"NP-01:{extra}" in page["rois"]
+    assert not [k for k in page["rois"] if k.endswith(":new_project")]
 
 
 def test_header_qr_decodes_from_render(rendered_sheet, manifest):
