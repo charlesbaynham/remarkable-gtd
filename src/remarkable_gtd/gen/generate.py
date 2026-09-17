@@ -1,8 +1,9 @@
 """
 GTD reMarkable Sheet — PDF generator
 =====================================
-Builds a 4-page PDF (Inbox / Next Actions / Delegated / Tickler) for the
-reMarkable 2. Each bucket is ONE page, 157.8 mm wide (the device panel
+Builds the sheet for the reMarkable 2: Inbox / Next Actions / Delegated /
+Tickler, a read-only Projects index, one page per project, and a New
+Projects page of blank rows. Each bucket is ONE page, 157.8 mm wide (the device panel
 width) and exactly as TALL as its content needs — no truncation, no blank
 tails. Every task carries a stable ID + QR fiducial, and a fixed labelled
 gutter, so the nightly vision agent reads your handwritten marks reliably.
@@ -57,6 +58,7 @@ def _with_ids(items, prefix, start=1):
 
 CAPTURE_LINES = 6        # blank capture rows at the foot of the Inbox page
 PROJECT_ADD_LINES = 4    # blank "add an action" rows at the foot of a project page
+NEW_PROJECT_LINES = 6    # blank rows on the New Projects page
 
 # Which view a project's current next action is surfaced in -> printed badge.
 SURFACED_BADGES = {
@@ -67,17 +69,56 @@ SURFACED_BADGES = {
 }
 
 
-def _capture_items(prefix: str, count: int, bare: bool = False, **extra) -> list[dict]:
-    """Blank write-in rows: no printed text, just an inked-or-not ``act`` box."""
+def _capture_items(
+    prefix: str, count: int, bare: bool = False, numbered: bool = False, **extra
+) -> list[dict]:
+    """Blank write-in rows: no printed text, just an inked-or-not ``act`` box.
+
+    ``numbered`` ids read ``CP-01``/``NP-01`` (a page whose rows are all
+    write-in lines); otherwise ``P01-C1`` — an add-a-line at the foot of a
+    page whose other rows are printed items.
+    """
     out = []
     for i in range(1, count + 1):
-        item = {"id": f"{prefix}-{i:02d}" if prefix == "CP" else f"{prefix}-C{i}",
+        item = {"id": f"{prefix}-{i:02d}" if numbered else f"{prefix}-C{i}",
                 "act": "", "capture": True}
         if bare:
             item["bare"] = True
         item.update(extra)
         out.append(item)
     return out
+
+
+NEW_PROJECTS_KEY = "new-projects"
+
+
+def build_new_projects_page() -> dict:
+    """The New Projects page: blank rows for projects that do not exist yet.
+
+    The Inbox has blank capture lines; this is the same idea one level up.
+    A row's write-in line is the project's first action and its PROJECT box
+    is the project's name, so a project is born already carrying the thing
+    that made you want it — nothing is invented on your behalf.
+
+    The rows carry the Inbox routing gutter (and ✦ AI), because a thing you
+    wrote down as a project often turns out to be one delegable action, or
+    something to defer, or nothing at all. A routing tick means exactly
+    that: do not create a project, file this like any Inbox item.
+
+    It is the sheet's LAST page, so every existing page keeps its position
+    (``scan_pdf`` matches PDF pages to manifest keys by position).
+    """
+    return {
+        "key": NEW_PROJECTS_KEY,
+        "bucket": "newproj",
+        "tag": "P+",
+        "title": "New Projects",
+        "sub": "Projects that do not exist yet — write one per line",
+        "count_label": f"{NEW_PROJECT_LINES} blank",
+        "kind": "newproj",
+        "scan": True,
+        "items": _capture_items("NP", NEW_PROJECT_LINES, numbered=True),
+    }
 
 
 def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
@@ -172,7 +213,7 @@ def build_buckets(data: dict) -> list[dict]:
          "sub": "Unprocessed capture — route every item out today",
          "count_label": f"{len(inbox)} to process",
          "kind": "flat", "items": inbox,
-         "capture_items": _capture_items("CP", CAPTURE_LINES)},
+         "capture_items": _capture_items("CP", CAPTURE_LINES, numbered=True)},
         {"key": "next", "tag": "1", "title": "Next Actions",
          "sub": "On your plate — do, delegate, or defer",
          "count_label": f"{len(nxt)} actions",
@@ -195,6 +236,8 @@ def build_buckets(data: dict) -> list[dict]:
     summary, project_pages = build_project_pages(data.get("projects") or [])
     buckets.append(summary)
     buckets.extend(project_pages)
+    new_projects = build_new_projects_page()
+    buckets.append(new_projects)
 
     for i, b in enumerate(buckets, start=1):
         b["page_no"] = i
@@ -203,6 +246,8 @@ def build_buckets(data: dict) -> list[dict]:
     by_ref = {p["project"]["index"]: p["page_no"] for p in project_pages}
     for entry in summary["projects"]:
         entry["page_no"] = by_ref[int(entry["ref"][1:])]
+    summary["new_page_ref"] = NEW_PROJECTS_KEY
+    summary["new_page_no"] = new_projects["page_no"]
     return buckets
 
 
@@ -391,8 +436,9 @@ def render_pdf(
 def add_internal_links(writer, buckets: list[dict], buckets_rois: list[dict]) -> int:
     """Turn every ``link:<target>`` ROI into a PDF GoTo link annotation.
 
-    ``link:P01`` on the projects summary jumps to that project's page;
-    ``link:projects`` on a project page jumps back. The ROI rectangle is in
+    ``link:P01`` on the projects summary jumps to that project's page,
+    ``link:new-projects`` to the New Projects page, and ``link:projects``
+    on either jumps back. The ROI rectangle is in
     page fractions with y measured from the top, so it is flipped into PDF
     user space against the page's media box.
 
@@ -400,11 +446,13 @@ def add_internal_links(writer, buckets: list[dict], buckets_rois: list[dict]) ->
     """
     from pypdf.annotations import Link
 
-    # ref ("P01" / "projects") -> 0-based PDF page index
+    # ref ("P01" / "projects" / "new-projects") -> 0-based PDF page index
     targets: dict[str, int] = {}
     for b in buckets:
         if b.get("kind") == "summary":
             targets["projects"] = b["page_no"] - 1
+        elif b.get("kind") == "newproj":
+            targets[NEW_PROJECTS_KEY] = b["page_no"] - 1
         elif b.get("kind") == "project":
             targets[f"P{b['project']['index']:02d}"] = b["page_no"] - 1
 

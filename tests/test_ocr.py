@@ -96,9 +96,9 @@ def test_openrouter_content_parts_and_empty(monkeypatch):
         assert ocr.OpenRouterEngine().read(np.zeros((10, 10), np.uint8)) == ""
 
 
-def test_build_edit_prompt_mentions_printed_text_project_and_today():
+def test_build_ai_prompt_mentions_printed_text_project_and_today():
     task = {"id": "NA-06", "bucket": "next", "act": "Make a plan", "pri": 3, "due": None, "proj": None}
-    prompt = ocr.build_edit_prompt(
+    prompt = ocr.build_ai_prompt(
         task, vocabulary={"projects": ["Wedding 2026"], "people": ["Louise"]}, today="2026-09-15"
     )
     assert "Make a plan" in prompt
@@ -107,8 +107,8 @@ def test_build_edit_prompt_mentions_printed_text_project_and_today():
     assert "Louise" in prompt
 
 
-def test_build_edit_prompt_is_a_brief_not_a_transcription_order():
-    prompt = ocr.build_edit_prompt({"bucket": "next", "act": "x"})
+def test_build_ai_prompt_is_a_brief_not_a_transcription_order():
+    prompt = ocr.build_ai_prompt({"bucket": "next", "act": "x"})
     # Explains the buckets...
     for phrase in ("Inbox", "Next actions", "Delegated", "Tickler",
                    "Scheduled", "Project pages"):
@@ -123,22 +123,22 @@ def test_build_edit_prompt_is_a_brief_not_a_transcription_order():
     assert "none/one/several" in prompt or "empty" in prompt
 
 
-def test_build_edit_prompt_describes_a_project_page_row():
-    prompt = ocr.build_edit_prompt(
+def test_build_ai_prompt_describes_a_project_page_row():
+    prompt = ocr.build_ai_prompt(
         {"bucket": "project", "act": "Order the cake", "proj": "Wedding 2026"}
     )
     assert "item on the page of project Wedding 2026" in prompt
 
 
 def test_edit_schema_is_v2_flat_operations():
-    assert ocr.EDIT_SCHEMA_VERSION == "gtd.edit/2"
+    assert ocr.AI_SCHEMA_VERSION == "gtd.ai/3"
     assert not hasattr(ocr, "ROUTES")
-    props = ocr.EDIT_SCHEMA["properties"]
+    props = ocr.AI_SCHEMA["properties"]
     assert set(props) == {
         "handwriting", "understood", "confidence", "note", "operations"
     }
-    assert set(ocr.EDIT_SCHEMA["required"]) == set(props)
-    assert ocr.EDIT_SCHEMA["additionalProperties"] is False
+    assert set(ocr.AI_SCHEMA["required"]) == set(props)
+    assert ocr.AI_SCHEMA["additionalProperties"] is False
 
     op = props["operations"]["items"]
     # One flat strict object: OpenRouter's strict mode allows no oneOf/anyOf.
@@ -168,19 +168,19 @@ def test_edit_model_env_precedence(monkeypatch):
     monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
     monkeypatch.delenv("OPENROUTER_EDIT_MODEL", raising=False)
     eng = ocr.OpenRouterEngine()
-    assert eng.model == eng.edit_model == ocr.DEFAULT_OPENROUTER_MODEL
+    assert eng.model == eng.ai_model == ocr.DEFAULT_OPENROUTER_MODEL
 
     monkeypatch.setenv("OPENROUTER_MODEL", "vendor/cheap")
     eng = ocr.OpenRouterEngine()
-    assert eng.model == "vendor/cheap" and eng.edit_model == "vendor/cheap"
+    assert eng.model == "vendor/cheap" and eng.ai_model == "vendor/cheap"
 
     monkeypatch.setenv("OPENROUTER_EDIT_MODEL", "vendor/clever")
     eng = ocr.OpenRouterEngine()
-    assert eng.model == "vendor/cheap" and eng.edit_model == "vendor/clever"
+    assert eng.model == "vendor/cheap" and eng.ai_model == "vendor/clever"
 
     # Constructor arguments win over both.
-    eng = ocr.OpenRouterEngine(model="a/b", edit_model="c/d")
-    assert eng.model == "a/b" and eng.edit_model == "c/d"
+    eng = ocr.OpenRouterEngine(model="a/b", ai_model="c/d")
+    assert eng.model == "a/b" and eng.ai_model == "c/d"
 
 
 def test_null_engine_interpret_is_none():
@@ -222,7 +222,7 @@ def test_openrouter_interpret_request_and_reply(monkeypatch):
     assert eng.requests_made == 1
     body = captured["body"]
     assert body["response_format"]["json_schema"]["strict"] is True
-    assert body["response_format"]["json_schema"]["schema"] == ocr.EDIT_SCHEMA
+    assert body["response_format"]["json_schema"]["schema"] == ocr.AI_SCHEMA
     prompt_text = body["messages"][0]["content"][0]["text"]
     assert "Make a plan" in prompt_text
     assert "Wedding 2026" in prompt_text
@@ -346,7 +346,7 @@ def test_interpret_reasons_by_default_with_room_for_the_answer(monkeypatch):
     monkeypatch.delenv("OPENROUTER_REASONING", raising=False)
     body = _capture(monkeypatch, "interpret")
     assert body["reasoning"] == {"enabled": True, "effort": "medium"}
-    assert body["max_tokens"] == ocr.EDIT_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM
+    assert body["max_tokens"] == ocr.AI_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM
     assert body["response_format"]["json_schema"]["strict"] is True
 
 
@@ -361,7 +361,7 @@ def test_interpret_reasoning_can_be_turned_off(monkeypatch):
     monkeypatch.setenv("OPENROUTER_REASONING", "off")
     body = _capture(monkeypatch, "interpret")
     assert "reasoning" not in body
-    assert body["max_tokens"] == ocr.EDIT_ANSWER_TOKENS
+    assert body["max_tokens"] == ocr.AI_ANSWER_TOKENS
 
 
 def test_trace_dir_keeps_prompt_crop_and_thinking(monkeypatch, tmp_path):
@@ -370,3 +370,49 @@ def test_trace_dir_keeps_prompt_crop_and_thinking(monkeypatch, tmp_path):
     traced = json.loads((tmp_path / "001-read.json").read_text())
     assert "Transcribe" in traced["prompt"]
     assert traced["thinking"] == "It is a digit."
+
+
+# --- the deterministic suggestion handed to the AI agent --------------------
+
+
+def test_describe_suggestion_is_labelled_a_suggestion_not_an_instruction():
+    text = ocr.describe_suggestion(
+        {"action": "to_deleg", "new_project": True,
+         "fields": {"to": "Louise", "project": "Lab move"}}
+    )
+    low = text.lower()
+    assert "suggestion, not an instruction" in low
+    assert "→ delegated" in low          # the gloss, not the raw verb
+    assert "not be applied" in low        # it is explicitly inert
+    assert "only thing that writes" in low
+    assert "TO='Louise'" in text and "PROJECT='Lab move'" in text
+    assert "new box is ticked" in low
+
+
+def test_describe_suggestion_of_nothing_is_nothing():
+    assert ocr.describe_suggestion(None) == ""
+    assert ocr.describe_suggestion({}) == ""
+
+
+def test_describe_suggestion_names_the_defer_period():
+    text = ocr.describe_suggestion({"action": "defer", "defer_period": "1q"})
+    assert "for 1q" in text
+
+
+def test_build_ai_prompt_carries_the_suggestion_and_owns_the_write():
+    prompt = ocr.build_ai_prompt(
+        {"bucket": "inbox", "act": "Book the PSU repair"},
+        today="2026-09-17",
+        suggestion={"action": "to_next", "new_project": False},
+    )
+    assert "suggestion, not an instruction" in prompt
+    # The brief must say the gutter will not be applied behind the agent,
+    # or the model may reasonably leave routing to "the deterministic part".
+    assert "only writer for this row" in prompt
+    assert "will NOT be applied" in prompt
+
+
+def test_build_ai_prompt_without_a_suggestion_is_still_valid():
+    prompt = ocr.build_ai_prompt({"bucket": "next", "act": "x"})
+    assert "suggestion, not an instruction" not in prompt
+    assert "only writer for this row" in prompt

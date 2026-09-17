@@ -27,9 +27,18 @@ say with a tick box, a QR, a fixed slot or a printed id is applied by plain
 Python with no model involved — that is what all the fiducials and labelled
 boxes are for. A vision model runs only to transcribe handwriting found in an
 inked write-in region, and to interpret a whole row when you explicitly asked
-for it by ticking ✎ Edit. That agent may return no operations at all, and is
+for it by ticking ✦ **AI**. That agent may return no operations at all, and is
 told to say "not understood" rather than guess: ambiguity is reported, never
 resolved silently.
+
+✦ AI is an **escape hatch**, not an annotation. Ticking it switches the
+deterministic rules off for that row: the row's gutter ticks and slots are
+still read, but only to build a *suggestion* passed to the agent as a
+labelled hint, and the entry comes back with `action: "none"` so nothing
+downstream can derive a write from it. The agent's operations are the row's
+single write, and its scope is therefore whatever the handwriting implies —
+amend the item, start a project, rename one, split the row into several
+actions. One row, one writer.
 
 The vault side (turning a GTD vault into `tasks.json`, applying the decisions
 back, the nightly schedule) lives with the vault: see `.gtd/remarkable/` in the
@@ -86,29 +95,53 @@ keys (such as a caller's `handle`) ride along into the embedded
 be mapped back to whatever produced the task. The optional top-level
 `context` (`projects`, `people`) is the vocabulary the sheet was printed
 against; it rides along in the embedded tasks document too, and is handed to
-the model reading a ✎-edited row so it can match handwriting against real
+the agent reading a ✦ AI row so it can match handwriting against real
 project/person names instead of guessing spelling.
 
 ### Capture rows and project pages
 
 The Inbox page ends with six blank rows `CP-01`…`CP-06`. Each is a full inbox
 row — write the new item on the ruled area and tick in the same gutter where
-it should go (minus ✎ Edit: there is no printed row to re-read), fill in priority/due/project as usual, and tick **NEW** next to
+it should go (minus ✦ AI: there is no printed row to re-read), fill in priority/due/project as usual, and tick **NEW** next to
 the PROJECT slot if the project you wrote does not exist yet. The `NEW` box
 (`<id>:new_project`) is on inbox, next-action and delegated rows too, and
-comes back as an orthogonal `new_project` flag, never an action.
+comes back as an orthogonal `new_project` flag, never an action. A project
+created from a row is seeded with **that row's own text as its first and
+only action** — nothing is invented on your behalf.
 
 `projects` adds a read-only summary page — one block per project with its
 goal, open-item count, current next action and a badge saying which view that
 action is surfaced in (`NA`/`DG`/`SC`/`TK`, or `STALLED`) — followed by one
 page per project. A project page prints every unchecked item as a row
-(`P01-03`, gutter ✓ Done + ✎ Edit only), lists the checked ones struck
+(`P01-03`, gutter ✓ Done + ✦ AI only), lists the checked ones struck
 through, and ends with four blank add-an-action lines (`P01-C1`…`P01-C4`).
 The summary is marked `scan: false` in the manifest and the scanner skips it
 entirely.
 
-Each summary block is a PDF GoTo link to that project's page, and each
-project page has a `← Projects` link back. Whether the reMarkable's own
+### The New Projects page
+
+The sheet's **last** page, `new-projects`, is the Inbox's blank capture
+lines one level up: six blank rows `NP-01`…`NP-06` for projects that do not
+exist yet. Write the project's first action on the ruled line and its name
+in the PROJECT box; tick nothing else and the project is created with that
+action as its first.
+
+Each row carries the full Inbox routing gutter plus ✦ AI, because something
+you wrote down as a project often turns out to be one delegable action, or
+something to defer, or nothing at all. A routing tick means exactly that:
+*do not create a project* — file this text like any Inbox item, with the
+PROJECT slot then naming an existing project to file it under. ✦ AI hands
+the row to the agent instead, which is how you say more than a name and a
+line will carry.
+
+Its rows are bucket `newproj` in the tasks document (the Inbox verb
+vocabulary; see `BUCKET_ACTIONS`), and the page is appended rather than
+inserted — `scan_pdf` matches PDF pages to manifest keys by position, so
+every existing page keeps its index.
+
+Each summary block is a PDF GoTo link to that project's page, the summary
+also links to the New Projects page, and each of those has a `← Projects`
+link back. Whether the reMarkable's own
 reader follows internal links is untested firmware behaviour — the page
 numbers are printed on the summary (`P01 · p6`) so the sheet still navigates
 by hand if it does not.
@@ -129,12 +162,12 @@ gtd-scan page.png --manifest today.manifest.json -o decisions.json
 
 Handwriting engines (`--ocr`): `openrouter` (needs `OPENROUTER_API_KEY`;
 `OPENROUTER_MODEL` picks the model, default Google Gemini Flash, and
-`OPENROUTER_EDIT_MODEL` overrides it for the ✎ EDIT agent alone — that call
+`OPENROUTER_AI_MODEL` overrides it for the ✦ AI agent alone — that call
 reasons about your vault rather than reading glyphs, so it is worth a
 stronger model), `tesseract`, or `null` (flag inked regions, transcribe
 nothing).
 
-**Reasoning** is on for the ✎ EDIT agent and off for slot transcription.
+**Reasoning** is on for the ✦ AI agent and off for slot transcription.
 `OPENROUTER_REASONING` (default `medium`) and `OPENROUTER_READ_REASONING`
 (default `off`) each take an effort level (`low`/`medium`/`high`), a token
 budget (`1500`), or `off`.
@@ -153,7 +186,7 @@ it does visible work.
 
 ⚠️ **Reasoning tokens are charged against `max_tokens`**, so enabling it
 *without* raising the budget truncates the reply mid-JSON
-(`finish_reason: length`) and the EDIT agent's operations are lost. The engine
+(`finish_reason: length`) and the AI agent's operations are lost. The engine
 adds `REASONING_TOKEN_HEADROOM` on top of the answer budget whenever reasoning
 is on.
 
@@ -201,13 +234,13 @@ which put ink 2.6 mm low at the foot of a 620 mm page — enough to push a name
 written in a TO box out of its slot. Re-run this if a firmware update moves
 the ticks.
 
-## Decisions JSON (`gtd.decisions/1`)
+## Decisions JSON (`gtd.decisions/2`)
 
 ```json
 {"pages": [{
   "page_key": "GTD|next|2026-06-01", "bucket": "next",
   "rectify": {"residual_px": 0.4, "reg_marks_found": 4},
-  "tasks": [{"id": "NA-02", "action": "to_deleg", "edited": false,
+  "tasks": [{"id": "NA-02", "action": "to_deleg", "ai": false,
              "new_project": false, "qr_verified": true,
              "fields": {"to": {"text": "Dave", "fill": 0.05}},
              "ticks": {"done": {"inked": false, "fill": 0.0}, "...": {}}}],
@@ -222,23 +255,40 @@ Actions per bucket: inbox `to_next | to_deleg | drop | defer`; next
 `done | to_deleg | defer`; delegated `done | to_me | defer`; tickler
 `activate | done | defer` (re-defer). `defer` carries `defer_period`
 (`1w`/`1m`/`1q`). A project-page item can only be `done`; a blank capture row
-takes the inbox routing verbs but carries no ✎ box. `edited` is set when the
-✎ box is ticked and
-`new_project` when the NEW box is; both are flags, never actions. Raw fill
-ratios stay under `ticks` for auditing. The read-only projects summary is
-returned as `{"page_key", "page_no", "skipped": true}`.
+and a New Projects row take the inbox routing verbs (the capture row carries
+no ✦ AI box). `new_project` is set when the NEW box is ticked — a flag, never
+an action. Raw fill ratios stay under `ticks` for auditing. The read-only
+projects summary is returned as `{"page_key", "page_no", "skipped": true}`.
 
-When ✎ is ticked, the whole row is cropped (the manifest's `<id>:row` ROI, or
-the union of the task's other ROIs on a sheet printed before `row` existed)
+`ai` is set when the ✦ AI box is ticked, and it is not a flag alongside the
+action — it *replaces* it. Such an entry always has `action: "none"` and
+`new_project: false`, and the deterministic reading it would otherwise have
+produced moves into `suggestion`:
+
+```json
+{"id": "IN-01", "ai": true, "action": "none", "new_project": false,
+ "suggestion": {"action": "to_deleg", "new_project": true,
+                "fields": {"to": "Louise"}, "text": null}}
+```
+
+`suggestion` exists to be read — by the agent, as a labelled hint, and by
+you, when auditing what the boxes said — and never to be applied. Applying
+it and the agent's operations both would give one row two writers, which is
+the thing the escape hatch exists to prevent.
+
+When ✦ AI is ticked, the whole row is cropped (the manifest's `<id>:row` ROI,
+or the union of the task's other ROIs on a sheet printed before `row` existed)
 and sent to the OCR engine's `interpret()` call along with the row's printed
 fields (`act`, `bucket`, `pri`, `due`, `proj`, `to`/`period`/`proj`), today's
-date, and the vocabulary from the tasks document's `context`.
+date, the vocabulary from the tasks document's `context`, and that
+`suggestion`.
 
 This is the **only** place a model decides anything: ticks, QRs and slots are
 read deterministically, and the agent runs because you asked it to by ticking
 the box. It is given a brief — what each GTD list means, what each vault
-operation does, the printed row, today, your project and people names — and
-replies with a `gtd.edit/2` object, stored under `edit`:
+operation does, the printed row, today, your project and people names, the
+deterministic suggestion, and the fact that it alone writes for this row —
+and replies with a `gtd.ai/3` object, stored under `ai_reading`:
 
 ```json
 {"handwriting": "→ Louise, chase Fri", "understood": true, "confidence": 0.92,
@@ -261,15 +311,18 @@ replies with a `gtd.edit/2` object, stored under `edit`:
   Every key is present on every operation; the inapplicable ones are `null`.
 - `note` — one sentence on how the row was read, or why it wasn't.
 
-A gutter tick is read separately and always wins over the agent; the agent is
-told not to repeat it. `act_text` is still set (from the first operation
-carrying new `text`, or from a plain re-read of the action-only crop when the
-engine has no `interpret()`) so older consumers keep working.
+The agent's operations are the row's **only** write: the gutter tick does not
+get applied behind it, which is why the brief says so explicitly — a routing
+box that should still take effect has to come back as an operation, or it
+does not happen. `act_text` is still set (from the first operation carrying
+new `text`, or from a plain re-read of the action-only crop when the engine
+has no `interpret()`) so older consumers keep working.
 
-Blank capture rows (`CP-*`, `P01-C*`) carry no printed text: their whole
-action area is the write-in region, measured with the slot thresholds and
-transcribed only when there is ink. They come back with `inked` and, if
-written on, `act_text` — plus whatever the gutter says, on the Inbox page.
+Blank capture rows (`CP-*`, `P01-C*`) and New Projects rows (`NP-*`) carry no
+printed text: their whole action area is the write-in region, measured with
+the slot thresholds and transcribed only when there is ink. They come back
+with `inked` and, if written on, `act_text` — plus whatever the gutter says,
+on the Inbox and New Projects pages.
 
 ## Project structure
 

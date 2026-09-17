@@ -51,11 +51,21 @@ def test_tasks_document_ids_match_sheet():
     assert set(t) == {
         "IN-01", "NA-01", "DG-01", "TK-01", "TK-02",
         *(f"CP-0{i}" for i in range(1, 7)),
+        *(f"NP-0{i}" for i in range(1, 7)),
     }
     assert t["IN-01"]["handle"] == "inbox:0:00000000" and t["IN-01"]["bucket"] == "inbox"
     assert t["TK-01"] == {"act": "w", "id": "TK-01", "bucket": "tickler", "period": "week"}
     assert t["TK-02"]["period"] == "quarter"
     assert t["DG-01"]["to"] == "Dave"
+
+
+def test_new_project_rows_are_their_own_bucket():
+    """A New Projects row is not a capture row: it means "create a project"."""
+    doc = tasks_document(build_buckets({"inbox": [{"act": "a"}]}), "2026-06-02")
+    np = doc["tasks"]["NP-01"]
+    assert np["bucket"] == "newproj"
+    assert np["act"] == "" and np["capture"] is True
+    assert "proj" not in np
 
 
 def test_capture_rows_are_their_own_bucket():

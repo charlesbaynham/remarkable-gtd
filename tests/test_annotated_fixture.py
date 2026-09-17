@@ -78,7 +78,7 @@ def test_every_hand_tick_is_recovered(scanned):
 
 def test_edit_flag_stays_off_when_not_ticked(scanned):
     decisions, engine = scanned
-    edited = [t["id"] for p in decisions["pages"] for t in p["tasks"] if t["edited"]]
+    edited = [t["id"] for p in decisions["pages"] for t in p["tasks"] if t["ai"]]
     assert edited == []
     # No row's Edit box is ticked on this sheet, so interpret() is never called.
     assert engine.interpret_calls == []

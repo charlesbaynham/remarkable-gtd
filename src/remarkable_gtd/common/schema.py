@@ -1,7 +1,7 @@
 """Schema version constants for manifest and decisions JSON formats."""
 
 MANIFEST_SCHEMA = "gtd.manifest/1"
-DECISIONS_SCHEMA = "gtd.decisions/1"
+DECISIONS_SCHEMA = "gtd.decisions/2"
 
 # Page width constant (reMarkable 2 panel)
 PAGE_W_MM = 157.8

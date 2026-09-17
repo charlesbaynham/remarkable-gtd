@@ -43,3 +43,45 @@ def test_row_roi_clamps_to_page_bounds():
     assert result["y"] == 0.0
     assert result["x"] + result["w"] == 1.0
     assert result["y"] + result["h"] == 1.0
+
+
+# --- handing the row to the AI agent ---------------------------------------
+
+
+def test_call_interpret_passes_the_suggestion_when_the_engine_takes_one():
+    from remarkable_gtd.scan.pipeline import _call_interpret
+
+    seen = {}
+
+    def interpret(image, task, vocabulary=None, today=None, suggestion=None):
+        seen["suggestion"] = suggestion
+        return {"understood": True, "operations": []}
+
+    out = _call_interpret(interpret, "img", {"act": "x"}, None, "2026-09-17",
+                          {"action": "done"})
+    assert out["understood"] is True
+    assert seen["suggestion"] == {"action": "done"}
+
+
+def test_call_interpret_tolerates_an_engine_written_before_suggestions():
+    """An engine on the older signature still works, just without the hint."""
+    from remarkable_gtd.scan.pipeline import _call_interpret
+
+    def interpret(image, task, vocabulary=None, today=None):
+        return {"understood": False, "operations": []}
+
+    out = _call_interpret(interpret, "img", {"act": "x"}, None, "2026-09-17",
+                          {"action": "done"})
+    assert out["understood"] is False
+
+
+def test_ai_act_text_takes_the_first_operation_carrying_text():
+    from remarkable_gtd.scan.pipeline import _ai_act_text
+
+    reading = {"understood": True, "operations": [
+        {"op": "complete", "text": None},
+        {"op": "add_next_action", "text": "Chase the quote"},
+    ]}
+    assert _ai_act_text(reading) == "Chase the quote"
+    assert _ai_act_text({**reading, "understood": False}) is None
+    assert _ai_act_text({"understood": True, "operations": []}) is None

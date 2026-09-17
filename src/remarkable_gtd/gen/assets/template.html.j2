@@ -33,20 +33,24 @@
 </div>
 {%- endmacro %}
 
-{#- `capture` marks a blank write-in row: it gets the bucket's routing
-    boxes but no ✎ Edit, since there is no printed row to re-read. -#}
+{#- ✦ AI is the escape hatch, not an annotation: ticking it switches the
+    deterministic rules off for that row and hands the whole row to the
+    agent, which then owns the only write. A blank write-in row gets it
+    too — on a `newproj` row it is the way to say more than a name. -#}
 {% macro gutter(cat, tid, capture=False) -%}
 <div class="gut">
 {%- if cat == 'inbox' -%}
-  {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}{% if not capture %}{{ cell(tid, 'edit', '✎', 'Edit') }}{% endif %}
+  {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}{% if not capture %}{{ cell(tid, 'ai', '✦', 'AI') }}{% endif %}
+{%- elif cat == 'newproj' -%}
+  {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- elif cat == 'delegated' -%}
-  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_me', '↩', 'To me') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_me', '↩', 'To me') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- elif cat == 'tickler' -%}
-  {{ cell(tid, 'activate', '→', 'Now') }}{{ cell(tid, 'done', '✓', 'Done') }}{{ defer(tid, 'redefer', 'Re-defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+  {{ cell(tid, 'activate', '→', 'Now') }}{{ cell(tid, 'done', '✓', 'Done') }}{{ defer(tid, 'redefer', 'Re-defer') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- elif cat == 'project' -%}
-  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- else -%}
-  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'edit', '✎', 'Edit') }}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- endif -%}
 </div>
 {%- endmacro %}
@@ -78,7 +82,13 @@
 {%- endmacro %}
 
 {% macro fields(cat, t) -%}
-{%- if cat == 'inbox' -%}
+{%- if cat == 'newproj' -%}
+{#- The PROJECT slot names the project being created; there is no NEW box
+    because every row on this page is a new project. A routing tick means
+    "on reflection this is not a project" and the slot then names an
+    existing project to file the text under, exactly as on the Inbox. -#}
+<div class="fields">{{ fld_blank(t.id, 'Priority', 'n', 'priority') }}{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_blank(t.id, 'Project', 'm', 'project') }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
+{%- elif cat == 'inbox' -%}
 <div class="fields">{{ fld_blank(t.id, 'Priority', 'n', 'priority') }}{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_proj_blank(t.id) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
 {%- elif cat == 'delegated' -%}
 <div class="fields">{{ fld_prom(t.id, 'To', t.to, 'to', 'to') }}{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_proj_cur(t.id, t.proj) }}</div>
@@ -119,27 +129,33 @@
   <span class="k"><span class="kb">→</span><span class="kl">to Delegated</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Defer to Tickler</span></span>
   <span class="k"><span class="kb">✗</span><span class="kl">Drop</span></span>
-  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+  <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">New = create this project</span></span>
 {%- elif cat == 'delegated' -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">↩</span><span class="kl">Back to me</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Defer 1w/1m/1q</span></span>
-  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+  <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">New = create this project</span></span>
 {%- elif cat == 'tickler' -%}
   <span class="k"><span class="kb">→</span><span class="kl">Activate now</span></span>
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Re-defer</span></span>
-  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+  <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
+{%- elif cat == 'newproj' -%}
+  <span class="k"><span class="kb">▢</span><span class="kl">Write it, get a project</span></span>
+  <span class="k"><span class="kb">→</span><span class="kl">Not a project → Next / Deleg</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">Defer to Tickler</span></span>
+  <span class="k"><span class="kb">✗</span><span class="kl">Drop</span></span>
+  <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
 {%- elif cat == 'project' -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
-  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+  <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
 {%- else -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">→</span><span class="kl">Delegate</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">Defer 1w/1m/1q</span></span>
-  <span class="k"><span class="kb">✎</span><span class="kl">Edited</span></span>
+  <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
   <span class="k"><span class="kb">▢</span><span class="kl">New = create this project</span></span>
 {%- endif -%}
 </div>
@@ -182,6 +198,29 @@
     </div>
     {% endfor %}
     {% if not b['projects'] %}<div class="empty">No projects.</div>{% endif %}
+    {% if b['new_page_ref'] %}
+    <div class="proj-block" data-roi="link:{{ b['new_page_ref'] }}">
+      <div class="pname">+ Start a new project</div>
+      <div class="pgoal">Blank rows on the last page of this sheet — write one per project.</div>
+      <div class="pmeta"><span class="mono">p{{ b['new_page_no'] }}</span></div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% elif b.kind == 'newproj' %}
+  {#- Blank rows for projects that do not exist yet: write the first action
+      on the line, the project's name in the PROJECT box. Same routing
+      gutter as the Inbox, so a row that turns out not to be a project can
+      still go to Next / Delegated / Tickler / the bin, or to the agent. -#}
+  <div class="proj-head">
+    <div class="pgoal">Write the first action on the line and the project's name in the PROJECT box. Tick nothing else and the project is created with that action as its first. Tick a routing box instead and it is filed like any Inbox item.</div>
+    <div><span class="backlink" data-roi="link:projects">← Projects</span></div>
+  </div>
+
+  {{ legend('newproj') }}
+
+  <div class="rows">
+    {% for t in b['items'] %}{{ row('newproj', t) }}{% endfor %}
   </div>
 
   {% elif b.kind == 'project' %}
