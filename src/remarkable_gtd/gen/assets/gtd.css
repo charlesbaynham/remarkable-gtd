@@ -159,6 +159,14 @@ html, body {
 .fld .newbox .box { width: 5mm; height: 5mm; border: var(--pen-box); }
 .fld .newbox .cl { font-size: 5.6pt; font-weight: 600; text-transform: uppercase; }
 .fld.prominent .fl { font-size: 7pt; }
+/* project row: RENAME TO and NEW GOAL each take a line of their own. The
+   goal slot spans the line and is two writing lines tall (a goal is a
+   sentence); the name slot is a fixed 70 mm, because a short name written
+   in a full-width box would fall under slot_fill_threshold. */
+.fld.wide { flex-basis: 100%; }
+.fld.wide .fl { width: 17mm; flex: none; }
+.fld .slot.name { width: 70mm; }
+.fld .slot.tall { flex: 1; height: 16mm; }
 .fld.prominent .cur { font-size: 10pt; }
 
 /* capture rows: a full row whose action text is a ruled blank write-in

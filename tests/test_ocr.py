@@ -130,6 +130,20 @@ def test_build_ai_prompt_describes_a_project_page_row():
     assert "item on the page of project Wedding 2026" in prompt
 
 
+def test_build_ai_prompt_describes_the_project_row_and_its_ops():
+    prompt = ocr.build_ai_prompt(
+        {"bucket": "projhead", "act": "Wedding 2026", "proj": "Wedding 2026",
+         "goal": "Married without debt"}
+    )
+    assert "project row of project Wedding 2026" in prompt
+    assert "Married without debt" in prompt
+    for op in ("rename_project", "set_project_goal", "archive_project"):
+        assert op in prompt
+        assert op in ocr.OPS
+    # a step delegated from its project stays on the project's page
+    assert "keeps it there" in prompt
+
+
 def test_edit_schema_is_v2_flat_operations():
     assert ocr.AI_SCHEMA_VERSION == "gtd.ai/3"
     assert not hasattr(ocr, "ROUTES")

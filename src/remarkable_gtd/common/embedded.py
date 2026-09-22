@@ -55,7 +55,9 @@ def tasks_document(buckets: list[dict], the_date: str, context: dict | None = No
     ``capture`` (a blank write-in row — the Inbox capture lines and the
     add-an-action lines at the foot of each project page, which carry the
     project name in ``proj``) and ``newproj`` (a blank row on the New
-    Projects page: its line is a would-be project's first action). The
+    Projects page: its line is a would-be project's first action) and
+    ``projhead`` (a project page's project row, standing for the project
+    itself: ``proj`` is its name, ``goal`` its goal as printed). The
     projects summary page is read-only and contributes nothing.
 
     ``context`` (``{"projects": [...], "people": [...]}``) is the vocabulary
@@ -80,6 +82,8 @@ def tasks_document(buckets: list[dict], the_date: str, context: dict | None = No
                 entry = dict(t)
                 entry["bucket"] = b.get("bucket", b["key"])
                 out[t["id"]] = entry
+        for t in b.get("head_items") or []:
+            out[t["id"]] = dict(t)  # carries its own bucket (``projhead``)
         for t in b.get("capture_items") or []:
             entry = dict(t)
             entry.setdefault("bucket", "capture")

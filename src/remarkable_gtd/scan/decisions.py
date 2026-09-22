@@ -28,9 +28,14 @@ BUCKET_ACTIONS = {
     "next": ["done", "to_deleg"],
     "delegated": ["done", "to_me"],
     "tickler": ["activate", "done"],
-    # An unchecked item printed on its own project page: tick it off, or
+    # An unchecked item printed on its own project page: an ordinary action
+    # (tick it off, delegate it, defer it with the trio, drop the step), or
     # hand the row to the agent with ✦ AI.
-    "project": ["done"],
+    "project": ["done", "to_deleg", "drop"],
+    # A project page's project row, standing for the project itself: ✓ here
+    # means the whole project is finished. Its RENAME TO / NEW GOAL slots
+    # are read like any other slot.
+    "projhead": ["done"],
 }
 # A blank capture row on the Inbox page carries the Inbox gutter, so the
 # same verbs apply to whatever gets written on it. So does a blank

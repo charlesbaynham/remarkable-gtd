@@ -343,6 +343,42 @@ def test_project_page_item_ticked_done(rendered_sheet, manifest, tasks_doc, tmp_
     assert all(tasks[f"P01-C{i}"]["inked"] is False for i in (2, 3, 4))
 
 
+def test_project_step_delegated_and_project_row_edited(rendered_sheet, manifest, tasks_doc, tmp_path):
+    """A project's step routes like any action; the project row carries
+    the project itself — finish it, rename it, re-state its goal."""
+    pdf_path, _ = rendered_sheet
+    page_no = manifest["pages"][PROJ_KEY]["page_no"]
+    img = rasterize_page(pdf_path, page_no - 1)
+    page = manifest["pages"][PROJ_KEY]
+
+    img = paint_ink(img, page, "P01-02:to_deleg", "tick")
+    img = paint_ink(img, page, "P01-02:slot_to", "text:Oliver")
+    img = paint_ink(img, page, "P01-02:slot_due", "text:1 Oct")
+    img = paint_ink(img, page, "P01-03:defer_1q", "tick")
+    img = paint_ink(img, page, "P01-PJ:done", "tick")
+    img = paint_ink(img, page, "P01-PJ:slot_name", "text:EPSRC grant")
+    img = paint_ink(img, page, "P01-PJ:slot_goal", "text:Grant submitted and funded")
+    img_path = save_png(img, tmp_path / "project.png")
+
+    engine = RecordingEngine()
+    decisions = run_scan(
+        img_path, manifest, ScanConfig(ocr_engine=engine),
+        page_key=PROJ_KEY, tasks=tasks_doc,
+    )
+    tasks = by_id(decisions)
+
+    assert tasks["P01-02"]["action"] == "to_deleg"
+    assert tasks["P01-02"]["fields"]["to"]["text"] == "<to>"
+    assert tasks["P01-02"]["fields"]["due"]["text"] == "<due>"
+    assert tasks["P01-03"]["action"] == "defer"
+    assert tasks["P01-03"]["defer_period"] == "1q"
+    assert tasks["P01-PJ"]["action"] == "done"
+    assert tasks["P01-PJ"]["fields"]["name"]["text"] == "<name>"
+    assert tasks["P01-PJ"]["fields"]["goal"]["text"] == "<goal>"
+    assert tasks_doc["tasks"]["P01-PJ"]["bucket"] == "projhead"
+    assert tasks_doc["tasks"]["P01-PJ"]["proj"] == "EPSRC proposal"
+
+
 def test_summary_page_is_skipped_by_the_scanner(rendered_sheet, manifest, tasks_doc, tmp_path):
     from remarkable_gtd.scan.sheet import scan_pdf, summarize
 
