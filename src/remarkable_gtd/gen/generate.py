@@ -124,10 +124,13 @@ def build_new_projects_page() -> dict:
 def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
     """Build the projects summary page and one page per project.
 
-    Each project gets ``ref`` ``P01``, ``P02``… Its unchecked items become
-    rows ``P01-03`` (numbered by their position in the project's item list,
-    so the printed id survives re-ordering of the *open* items), and four
-    blank add-lines ``P01-C1``…``P01-C4`` close the page.
+    Each project gets ``ref`` ``P01``, ``P02``… A project row ``P01-PJ``
+    (bucket ``projhead``) stands for the project itself: finish it, rename
+    it, re-state its goal. Its unchecked items become rows ``P01-03``
+    (numbered by their position in the project's item list, so the printed
+    id survives re-ordering of the *open* items), each routable like a Next
+    Actions row, and four blank add-lines ``P01-C1``…``P01-C4`` close the
+    page.
     """
     summary_entries: list[dict] = []
     pages: list[dict] = []
@@ -160,19 +163,31 @@ def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
         else:
             badge = first.get("badge") or "STALLED"
 
+        # The project row: the project itself as one scannable row — tick
+        # ✓ Done to finish (archive) it, write a new name or goal in the
+        # slots, or hand it to the agent with ✦ AI.
+        head = {
+            "id": f"{ref}-PJ",
+            "act": name,
+            "proj": name,
+            "goal": proj.get("goal", ""),
+            "bucket": "projhead",
+        }
+
         page_no_placeholder = 0
         pages.append({
             "key": f"project-{idx:02d}",
             "bucket": "project",
             "tag": ref,
             "title": name,
-            "sub": "Project — tick actions off, amend them, or add new ones",
+            "sub": "Project — finish, rename or re-goal it; route, drop or add its actions",
             "goal": proj.get("goal", ""),
             "status": proj.get("status") or [],
             "count_label": f"{len(open_items)} open",
             "kind": "project",
             "scan": True,
             "project": {"index": idx, "name": name},
+            "head_items": [head],
             "items": open_items,
             "done_items": done_items,
             "capture_items": _capture_items(ref, PROJECT_ADD_LINES, bare=True, proj=name),

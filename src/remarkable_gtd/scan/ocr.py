@@ -92,6 +92,8 @@ _HINT_PROMPTS = {
     "due": "It is a small box labelled DUE and should contain a date (for example '6 Jun', '2026-06-06' or 'Fri').",
     "project": "It is a box labelled PROJECT and should contain a short project name.",
     "to": "It is a box labelled TO and should contain a person's name.",
+    "name": "It is a box labelled RENAME TO and should contain a short project name.",
+    "goal": "It is a box labelled NEW GOAL and should contain a one-sentence project goal, possibly over two lines.",
     "capture": "It is a ruled capture line on a to-do sheet and contains a new task written in freehand.",
     "line": "It is a single handwritten line.",
     "block": "It may contain several lines of handwriting.",
@@ -120,7 +122,8 @@ AI_SCHEMA_VERSION = "gtd.ai/3"
 OPS = (
     "update", "complete", "delete", "move", "capture", "add_next_action",
     "delegate", "schedule", "add_to_tickler", "create_project",
-    "add_project_action",
+    "add_project_action", "rename_project", "set_project_goal",
+    "archive_project",
 )
 
 # Destinations for `move`.
@@ -158,9 +161,11 @@ _OP_SCHEMA = {
                    "description": "Tickler bucket for op=move to=tickler or "
                                   "add_to_tickler: one of " + ", ".join(TICKLER_PERIODS) + "."},
         "name": {"type": ["string", "null"],
-                 "description": "Project name for op=create_project / add_project_action."},
+                 "description": "Project name for op=create_project / add_project_action, "
+                                "and the EXISTING project's name for rename_project / "
+                                "set_project_goal / archive_project."},
         "goal": {"type": ["string", "null"],
-                 "description": "One-line outcome for op=create_project."},
+                 "description": "One-line outcome for op=create_project / set_project_goal."},
     },
 }
 
@@ -190,7 +195,12 @@ def _bucket_description(task: dict) -> str:
     if bucket == "tickler":
         return f"Tickler ({task.get('period') or 'unknown period'})"
     if bucket == "project":
-        return f"an item on the page of project {task.get('proj') or 'unknown'}"
+        return f"an item on the page of project {task.get('proj') or 'unknown'} (one of its actions)"
+    if bucket == "projhead":
+        return (
+            f"the project row of project {task.get('proj') or 'unknown'} — it stands for "
+            f"the project itself (goal: \"{task.get('goal') or 'none'}\"), not for one action"
+        )
     if bucket == "capture":
         proj = task.get("proj")
         if proj:
@@ -227,6 +237,21 @@ update, complete, delete and move):
 - add_to_tickler: create a NEW deferred item resurfacing after `period`.
 - create_project: create a NEW project page with `name` and `goal`.
 - add_project_action: append an action (`text`) to the project named `name`.
+- rename_project: rename the existing project `name` to `text`; every link
+  to it follows.
+- set_project_goal: replace the goal of the existing project `name` with
+  `goal`.
+- archive_project: the whole project `name` is finished — its page moves to
+  Done/ and every row surfacing it goes.
+
+A project's action (a step on a project page) is an ordinary action that
+stays on the project's page: move with to=next/delegated/scheduled/tickler
+keeps it there and only changes where it is surfaced (my plate, waiting on
+`person` with chase-by `due`, a reminder on `due`, or the tickler for
+`period`); move to=inbox or to=project takes it OUT of the project. On the
+project row itself (the row that stands for the whole project) use
+rename_project, set_project_goal and archive_project; `name` defaults to
+that project.
 """
 
 
@@ -307,7 +332,8 @@ def build_ai_prompt(
         "on an e-ink tablet: the printed item text, a gutter of tick boxes "
         "(the ✦ AI box is ticked, which is the only reason you are being "
         "asked) and, on most rows, labelled write-in boxes PRIORITY, DUE, "
-        "PROJECT, TO. Read my handwriting — new words, strike-throughs, "
+        "PROJECT, TO (on a project row, RENAME TO and NEW GOAL; there ✓ "
+        "Finish means the whole project is done). Read my handwriting — new words, strike-throughs, "
         "arrows, anything in or near the boxes — and say what should happen "
         "to my vault.\n\n"
         "Ticking ✦ AI means I did not want this row handled by the rigid "

@@ -112,9 +112,14 @@ only action** — nothing is invented on your behalf.
 `projects` adds a read-only summary page — one block per project with its
 goal, open-item count, current next action and a badge saying which view that
 action is surfaced in (`NA`/`DG`/`SC`/`TK`, or `STALLED`) — followed by one
-page per project. A project page prints every unchecked item as a row
-(`P01-03`, gutter ✓ Done + ✦ AI only), lists the checked ones struck
-through, and ends with four blank add-an-action lines (`P01-C1`…`P01-C4`).
+page per project. A project page opens with a **project row** (`P01-PJ`,
+bucket `projhead`) standing for the project itself: ✓ Finish (the whole
+project is done), ✦ AI, a RENAME TO slot and a two-line NEW GOAL slot. It
+then prints every unchecked item as a row (`P01-03`) with the Next Actions
+routing — ✓ Done, → Deleg, Defer 1w/1m/1q, ✗ Drop, ✦ AI — and DUE/TO slots,
+because a project's step is an ordinary action; lists the checked ones
+struck through; and ends with four blank add-an-action lines
+(`P01-C1`…`P01-C4`).
 The summary is marked `scan: false` in the manifest and the scanner skips it
 entirely.
 
@@ -254,7 +259,8 @@ the ticks.
 Actions per bucket: inbox `to_next | to_deleg | drop | defer`; next
 `done | to_deleg | defer`; delegated `done | to_me | defer`; tickler
 `activate | done | defer` (re-defer). `defer` carries `defer_period`
-(`1w`/`1m`/`1q`). A project-page item can only be `done`; a blank capture row
+(`1w`/`1m`/`1q`). A project-page item takes `done | to_deleg | drop | defer`;
+a project row only `done`; a blank capture row
 and a New Projects row take the inbox routing verbs (the capture row carries
 no ✦ AI box). `new_project` is set when the NEW box is ticked — a flag, never
 an action. Raw fill ratios stay under `ticks` for auditing. The read-only

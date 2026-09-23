@@ -48,7 +48,9 @@
 {%- elif cat == 'tickler' -%}
   {{ cell(tid, 'activate', '→', 'Now') }}{{ cell(tid, 'done', '✓', 'Done') }}{{ defer(tid, 'redefer', 'Re-defer') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- elif cat == 'project' -%}
-  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'ai', '✦', 'AI') }}
+  {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}{{ cell(tid, 'ai', '✦', 'AI') }}
+{%- elif cat == 'projhead' -%}
+  {{ cell(tid, 'done', '✓', 'Finish') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- else -%}
   {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- endif -%}
@@ -92,7 +94,15 @@
 <div class="fields">{{ fld_blank(t.id, 'Priority', 'n', 'priority') }}{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_proj_blank(t.id) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
 {%- elif cat == 'delegated' -%}
 <div class="fields">{{ fld_prom(t.id, 'To', t.to, 'to', 'to') }}{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_proj_cur(t.id, t.proj) }}</div>
-{%- elif cat == 'tickler' or cat == 'project' -%}
+{%- elif cat == 'project' -%}
+{#- A project step is an ordinary action: DUE is the chase-by date when it
+    is delegated, TO the person it is delegated to. -#}
+<div class="fields">{{ fld_blank(t.id, 'Due', 's', 'due') }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
+{%- elif cat == 'projhead' -%}
+{#- The project itself: a new name and a new goal, each on its own line.
+    Leave a slot blank to keep what is printed. -#}
+<div class="fields"><span class="fld wide"><span class="fl">Rename to</span><span class="slot name" data-roi="{{ t.id }}:slot_name"></span></span><span class="fld wide"><span class="fl">New goal</span><span class="slot tall" data-roi="{{ t.id }}:slot_goal"></span></span></div>
+{%- elif cat == 'tickler' -%}
 {#- no metadata -#}
 {%- else -%}
 <div class="fields">{{ fld_cur(t.id, 'Priority', t.pri, 'n', 'priority') }}{{ fld_cur(t.id, 'Due', t.due, 's', 'due') }}{{ fld_proj_cur(t.id, t.proj) }}{{ fld_blank(t.id, 'To', 'to', 'to') }}</div>
@@ -150,7 +160,11 @@
   <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
 {%- elif cat == 'project' -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
+  <span class="k"><span class="kb">→</span><span class="kl">Delegate (TO, DUE = chase)</span></span>
+  <span class="k"><span class="kb">▢</span><span class="kl">Defer 1w/1m/1q</span></span>
+  <span class="k"><span class="kb">✗</span><span class="kl">Drop the step</span></span>
   <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
+  <span class="k"><span class="kb">✓</span><span class="kl">Finish = whole project → Done/</span></span>
 {%- else -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">→</span><span class="kl">Delegate</span></span>
@@ -233,6 +247,10 @@
   {{ legend('project') }}
 
   <div class="rows">
+    {#- The project row stands for the project itself. -#}
+    <div class="cap-head">This project</div>
+    {% for t in b['head_items'] %}{{ row('projhead', t) }}{% endfor %}
+    <div class="cap-head">Actions</div>
     {% for t in b['items'] %}{{ row('project', t) }}{% endfor %}
     {% if not b['items'] %}<div class="empty">Nothing open — every action is ticked off.</div>{% endif %}
     {% if b['done_items'] %}

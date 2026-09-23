@@ -261,16 +261,33 @@ def test_newproj_row_routing_tick_wins_over_creating_a_project():
     assert entry["act_text"] == "Buy a new kettle"
 
 
-def test_project_bucket_only_completes():
+def test_project_step_routes_like_an_action():
     entry, _ = resolve_task(
         "P01-03", ticks(done=True, ai=False), "project",
     )
     assert entry["action"] == "done"
+    entry, _ = resolve_task("P01-03", ticks(to_deleg=True), "project")
+    assert entry["action"] == "to_deleg"
+    entry, _ = resolve_task("P01-03", ticks(drop=True), "project")
+    assert entry["action"] == "drop"
+    entry, _ = resolve_task("P01-03", ticks(defer_1m=True), "project")
+    assert entry["action"] == "defer" and entry["defer_period"] == "1m"
+    # routing is not an Inbox vocabulary: → Next has no box here
+    entry, _ = resolve_task("P01-03", ticks(to_next=True), "project")
+    assert entry["action"] == "none"
     entry, warnings = resolve_task(
         "P01-03", ticks(done=False, ai=True), "project",
     )
     assert entry["action"] == "none" and entry["ai"] is True
     assert warnings == []
+
+
+def test_project_row_only_finishes():
+    entry, _ = resolve_task("P01-PJ", ticks(done=True), "projhead")
+    assert entry["action"] == "done"
+    # no defer trio on the project row: a stray defer key is not an action
+    entry, _ = resolve_task("P01-PJ", ticks(drop=True), "projhead")
+    assert entry["action"] == "none"
 
 
 def test_build_decisions_shape():

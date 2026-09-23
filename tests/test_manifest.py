@@ -16,7 +16,8 @@ EXPECTED_GUTTERS = {
     "next": {"done", "to_deleg", "ai", "defer_1w", "defer_1m", "defer_1q"},
     "delegated": {"done", "to_me", "ai", "defer_1w", "defer_1m", "defer_1q"},
     "tickler": {"activate", "done", "ai", "redefer_1w", "redefer_1m", "redefer_1q"},
-    "project": {"done", "ai"},
+    "project": {"done", "to_deleg", "drop", "ai", "defer_1w", "defer_1m", "defer_1q"},
+    "projhead": {"done", "ai"},
     "newproj": INBOX_ROUTING | {"ai"},
 }
 PAGE_LEVEL = {"reg:tl", "reg:tr", "reg:bl", "reg:br", "page:qr"}
@@ -134,9 +135,20 @@ def test_project_pages_and_summary(manifest):
     # open items only (item 1 of the fixture project is done)
     ids = {k.split(":", 1)[0] for k in proj["rois"] if ":" in k
            and not k.startswith(("reg:", "page:", "link:"))}
-    assert ids == {"P01-02", "P01-03", "P01-C1", "P01-C2", "P01-C3", "P01-C4"}
+    assert ids == {"P01-PJ", "P01-02", "P01-03", "P01-C1", "P01-C2", "P01-C3", "P01-C4"}
     for verb in EXPECTED_GUTTERS["project"]:
         assert f"P01-02:{verb}" in proj["rois"]
+    # a project step routes like a Next action: DUE (chase-by) and TO slots
+    for extra in ("slot_due", "slot_to", "row", "qr"):
+        assert f"P01-02:{extra}" in proj["rois"]
+    # the project row stands for the project itself: finish, rename, re-goal
+    for verb in EXPECTED_GUTTERS["projhead"]:
+        assert f"P01-PJ:{verb}" in proj["rois"]
+    for extra in ("slot_name", "slot_goal", "row", "qr", "act"):
+        assert f"P01-PJ:{extra}" in proj["rois"]
+    assert not [k for k in proj["rois"] if k.startswith("P01-PJ:") and "defer" in k]
+    # it sits above the actions
+    assert proj["rois"]["P01-PJ:row"]["y"] < proj["rois"]["P01-02:row"]["y"]
     # add-lines are bare: an action area and nothing else to tick
     assert "P01-C1:act" in proj["rois"]
     assert "P01-C1:done" not in proj["rois"]
