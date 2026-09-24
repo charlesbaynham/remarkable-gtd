@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from remarkable_gtd.scan.ink import detect_box, measure_fill, roi_to_pixels, select_one
+from remarkable_gtd.scan.ink import (
+    detect_box,
+    ink_floor_px,
+    measure_fill,
+    roi_to_pixels,
+    select_one,
+)
 
 
 def make_box_canvas(size: int = 36, border: int = 2) -> np.ndarray:
@@ -65,6 +71,45 @@ def test_inset_excludes_border_even_for_tiny_boxes():
     roi = {"x": 6 / 18, "y": 6 / 18, "w": 6 / 18, "h": 6 / 18}
     fill, inked = detect_box(canvas, roi, (18, 18))
     assert not inked
+
+
+def wide_line_canvas(word_px: int = 20) -> tuple[np.ndarray, dict, tuple[int, int]]:
+    """A wide write-in line with ``word_px`` square of ink in the middle."""
+    canvas = np.full((200, 1000), 255, dtype=np.uint8)
+    canvas[100:100 + word_px, 400:400 + word_px] = 0
+    roi = {"x": 0.1, "y": 0.4, "w": 0.8, "h": 0.2}
+    return canvas, roi, (1000, 200)
+
+
+def test_short_word_on_a_wide_line_is_below_the_fill_threshold():
+    canvas, roi, size = wide_line_canvas()
+    fill, inked = detect_box(canvas, roi, size, inner_inset_frac=0.15, threshold=0.03)
+    assert fill < 0.03
+    assert not inked
+
+
+def test_short_word_on_a_wide_line_is_inked_by_the_ink_floor():
+    canvas, roi, size = wide_line_canvas()
+    floor = ink_floor_px(size, 1.5, page_w_mm=157.8)
+    fill, inked = detect_box(
+        canvas, roi, size, inner_inset_frac=0.15, threshold=0.03, min_ink_px=floor,
+    )
+    assert fill < 0.03
+    assert inked
+
+
+def test_ink_floor_ignores_a_speck():
+    canvas, roi, size = wide_line_canvas(word_px=5)
+    floor = ink_floor_px(size, 1.5, page_w_mm=157.8)
+    _, inked = detect_box(
+        canvas, roi, size, inner_inset_frac=0.15, threshold=0.03, min_ink_px=floor,
+    )
+    assert not inked
+
+
+def test_ink_floor_scales_with_the_canvas():
+    assert ink_floor_px((1404, 3053), 1.5) == 119
+    assert ink_floor_px((2808, 6106), 1.5) == 475
 
 
 def test_measure_fill_empty_crop():

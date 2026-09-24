@@ -326,9 +326,13 @@ has no `interpret()`) so older consumers keep working.
 
 Blank capture rows (`CP-*`, `P01-C*`) and New Projects rows (`NP-*`) carry no
 printed text: their whole action area is the write-in region, measured with
-the slot thresholds and transcribed only when there is ink. They come back
-with `inked` and, if written on, `act_text` — plus whatever the gutter says,
-on the Inbox and New Projects pages.
+the slot thresholds and transcribed only when there is ink. A short word on
+a 53 mm line is a tiny *fraction* of it, so ink is also judged in absolute
+terms — 1.5 mm² of it, about one character, counts as written on however
+wide the region. They come back with `inked` and `ink_fill` and, if written
+on, `act_text` — plus whatever the gutter says, on the Inbox and New
+Projects pages. Ink too faint to clear the floor is reported as a warning,
+never dropped in silence.
 
 ## Project structure
 

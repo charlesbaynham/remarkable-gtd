@@ -1,0 +1,42 @@
+{
+ "schema": "gtd.tasks/1",
+ "date": "2026-09-23",
+ "tasks": {
+  "CP-01": {
+   "id": "CP-01",
+   "act": "",
+   "capture": true,
+   "bucket": "capture"
+  },
+  "CP-02": {
+   "id": "CP-02",
+   "act": "",
+   "capture": true,
+   "bucket": "capture"
+  },
+  "CP-03": {
+   "id": "CP-03",
+   "act": "",
+   "capture": true,
+   "bucket": "capture"
+  },
+  "CP-04": {
+   "id": "CP-04",
+   "act": "",
+   "capture": true,
+   "bucket": "capture"
+  },
+  "CP-05": {
+   "id": "CP-05",
+   "act": "",
+   "capture": true,
+   "bucket": "capture"
+  },
+  "CP-06": {
+   "id": "CP-06",
+   "act": "",
+   "capture": true,
+   "bucket": "capture"
+  }
+ }
+}

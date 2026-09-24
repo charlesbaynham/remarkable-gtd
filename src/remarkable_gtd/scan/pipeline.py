@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from remarkable_gtd.common.schema import parse_page_key
+from remarkable_gtd.common.schema import PAGE_W_MM, parse_page_key
 from remarkable_gtd.scan import ink as ink_mod
 from remarkable_gtd.scan import qr as qr_mod
 from remarkable_gtd.scan.decisions import (
@@ -38,6 +38,11 @@ class ScanConfig:
     # still ~6 % fill — comfortably above 0.03 — and a written word or date
     # far more. Raising it would only start losing sparse handwriting.
     slot_fill_threshold: float = 0.03
+    # A write-in region also counts as inked when it holds this much ink
+    # outright, however small a fraction of it that is: fill alone is
+    # area-blind, and "Test" on a 53x8 mm capture line is 2.3 % while the
+    # same word in a PRIORITY box is far above the threshold.
+    write_in_ink_mm2: float = 1.5
     inner_inset_frac: float = 0.22     # excludes the printed box border (tick boxes)
     slot_inset_frac: float = 0.15      # slots are wide; the border is only ~3px but
                                        # a 1px scale mismatch would leak it in
@@ -250,6 +255,9 @@ def run_scan(
     task_qrs = qr_mod.decode_task_qrs(warped_gray, page, canvas)
 
     ocr = get_engine(cfg.ocr_engine)
+    write_in_floor = ink_mod.ink_floor_px(
+        canvas, cfg.write_in_ink_mm2, manifest.get("page_w_mm", PAGE_W_MM)
+    )
 
     def ocr_crop(roi: dict, hint: str, inset_px: int = 3, context: str | None = None) -> str:
         """Transcribe a region: crop just inside the printed border so the
@@ -289,6 +297,7 @@ def run_scan(
                 warped_binary, roi, canvas,
                 inner_inset_frac=cfg.slot_inset_frac,
                 threshold=cfg.slot_fill_threshold,
+                min_ink_px=write_in_floor,
             )
             if inked:
                 context = None
@@ -308,13 +317,19 @@ def run_scan(
         act_text = None
         capture_inked: bool | None = None
         if task_bucket in ("capture", "newproj") and "act" in t_rois:
-            fill, capture_inked = ink_mod.detect_box(
+            capture_fill, capture_inked = ink_mod.detect_box(
                 warped_binary, t_rois["act"], canvas,
                 inner_inset_frac=cfg.slot_inset_frac,
                 threshold=cfg.slot_fill_threshold,
+                min_ink_px=write_in_floor,
             )
             if capture_inked:
                 act_text = ocr_crop(t_rois["act"], "capture", inset_px=0)
+            elif capture_fill > 0:
+                warnings.append(
+                    f"{task_id}: ink too faint to read as a capture "
+                    f"(fill={capture_fill:.4f}); the row was left alone"
+                )
 
         # ✦ AI ticked: the deterministic classifier is switched off for
         # this row — it still runs, but only to produce the `suggestion`
@@ -355,6 +370,7 @@ def run_scan(
         )
         if capture_inked is not None:
             entry["inked"] = capture_inked
+            entry["ink_fill"] = round(capture_fill, 4)
         qr_text = task_qrs.get(task_id)
         entry["qr_verified"] = qr_text == task_id
         tasks_out.append(entry)
