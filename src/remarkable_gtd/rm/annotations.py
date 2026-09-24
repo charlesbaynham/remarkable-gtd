@@ -85,21 +85,48 @@ def extract_from_rmdoc(
         return pdf_bytes, rm_by_page
 
 
-def parse_annotations(rm_bytes: bytes) -> list:
-    """Parse v6 annotations from .rm file bytes."""
+class UnreadableLayer(Exception):
+    """A ``.rm`` layer whose blocks would not parse.
+
+    Not the same as a layer that parses and yields no strokes: the tablet
+    records an erasure as a line item with no value, so a written-on-then-
+    rubbed-out sheet reads perfectly and simply has nothing left on it. Only
+    this exception means the ink could not be read.
+    """
+
+    def __init__(self, message: str, lines: list | None = None):
+        super().__init__(message)
+        self.lines = lines or []   # whatever parsed before the read gave up
+
+
+def read_annotations(rm_bytes: bytes) -> list:
+    """Parse v6 annotations from .rm file bytes, or raise ``UnreadableLayer``."""
     _check_deps()
     lines = []
     with BytesIO(rm_bytes) as f:
         try:
-            blocks = read_blocks(f)
-            for block in blocks:
+            for block in read_blocks(f):
                 if isinstance(block, SceneLineItemBlock):
                     item = block.item
                     if item and item.value:
                         lines.append(item.value)
         except Exception as e:
-            print(f"Warning: Error reading blocks: {e}", file=sys.stderr)
+            raise UnreadableLayer(str(e), lines) from e
     return lines
+
+
+def parse_annotations(rm_bytes: bytes) -> list:
+    """``read_annotations``, but an unreadable layer is a warning and no strokes.
+
+    For callers that want to draw whatever ink they can get. Anything deciding
+    whether a sheet has been written on wants ``read_annotations``, so that an
+    erased sheet is not mistaken for one whose ink is unreadable.
+    """
+    try:
+        return read_annotations(rm_bytes)
+    except UnreadableLayer as e:
+        print(f"Warning: Error reading blocks: {e}", file=sys.stderr)
+        return e.lines
 
 
 def _color_for_pen(color_enum) -> tuple[float, float, float]:
