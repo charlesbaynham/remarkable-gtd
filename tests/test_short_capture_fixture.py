@@ -39,7 +39,7 @@ def scanned():
         load_manifest(FIX / "sheet.manifest.json"),
         ScanConfig(ocr_engine=engine),
         page_key=PAGE_KEY,
-        tasks=json.loads((FIX / "tasks.json").read_text(encoding="utf-8")),
+        tasks=json.loads((FIX / "tasks.capture.json").read_text(encoding="utf-8")),
     )
     return decisions, engine
 
