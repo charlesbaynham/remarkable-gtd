@@ -10,6 +10,16 @@ from __future__ import annotations
 
 import numpy as np
 
+from remarkable_gtd.common.schema import PAGE_W_MM
+
+
+def ink_floor_px(
+    canvas_size: tuple[int, int], area_mm2: float, page_w_mm: float = PAGE_W_MM
+) -> int:
+    """Dark-pixel count equivalent to ``area_mm2`` on the rectified canvas."""
+    px_per_mm = canvas_size[0] / page_w_mm
+    return int(round(area_mm2 * px_per_mm ** 2))
+
 
 def roi_to_pixels(roi: dict, canvas_size: tuple[int, int]) -> tuple[int, int, int, int]:
     """Convert a normalized ``{x,y,w,h}`` ROI to pixel ``(x1, y1, x2, y2)``.
@@ -37,6 +47,7 @@ def detect_box(
     canvas_size: tuple[int, int],
     inner_inset_frac: float = 0.22,
     threshold: float = 0.06,
+    min_ink_px: int = 0,
 ) -> tuple[float, bool]:
     """Measure ink fill inside a tick box, excluding its printed border.
 
@@ -47,6 +58,11 @@ def detect_box(
         inner_inset_frac: Fraction of box width/height to inset on each side
             (excludes the printed 0.45 mm border plus slop from rectification).
         threshold: Fill ratio above which the box counts as inked.
+        min_ink_px: Dark-pixel count that also counts as inked, whatever the
+            fill ratio. A fill ratio is area-blind, so a short word on a wide
+            write-in line reads far below the threshold the same word reaches
+            in a small slot; pass a floor (see :func:`ink_floor_px`) for any
+            region whose size is not a measure of how much will be written.
 
     Returns:
         ``(fill_ratio, inked)``.
@@ -63,7 +79,8 @@ def detect_box(
     inner = rectified_binary[y1 + iy : y2 - iy, x1 + ix : x2 - ix]
 
     fill = measure_fill(inner)
-    return fill, fill > threshold
+    dark_px = fill * inner.size
+    return fill, fill > threshold or (min_ink_px > 0 and dark_px >= min_ink_px)
 
 
 def select_one(results: dict[str, tuple[float, bool]]) -> str | None:
