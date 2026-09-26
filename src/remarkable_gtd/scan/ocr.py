@@ -123,7 +123,7 @@ OPS = (
     "update", "complete", "delete", "move", "capture", "add_next_action",
     "delegate", "schedule", "add_to_tickler", "create_project",
     "add_project_action", "rename_project", "set_project_goal",
-    "archive_project",
+    "archive_project", "star_project", "unstar_project",
 )
 
 # Destinations for `move`.
@@ -163,7 +163,8 @@ _OP_SCHEMA = {
         "name": {"type": ["string", "null"],
                  "description": "Project name for op=create_project / add_project_action, "
                                 "and the EXISTING project's name for rename_project / "
-                                "set_project_goal / archive_project."},
+                                "set_project_goal / archive_project / star_project / "
+                                "unstar_project."},
         "goal": {"type": ["string", "null"],
                  "description": "One-line outcome for op=create_project / set_project_goal."},
     },
@@ -199,7 +200,8 @@ def _bucket_description(task: dict) -> str:
     if bucket == "projhead":
         return (
             f"the project row of project {task.get('proj') or 'unknown'} — it stands for "
-            f"the project itself (goal: \"{task.get('goal') or 'none'}\"), not for one action"
+            f"the project itself (goal: \"{task.get('goal') or 'none'}\"; "
+            f"{'starred' if task.get('starred') else 'not starred'}), not for one action"
         )
     if bucket == "capture":
         proj = task.get("proj")
@@ -243,6 +245,8 @@ update, complete, delete and move):
   `goal`.
 - archive_project: the whole project `name` is finished — its page moves to
   Done/ and every row surfacing it goes.
+- star_project / unstar_project: pin the existing project `name` to the top
+  of the projects list and the hotbar of every page, or take it off.
 
 A project's action (a step on a project page) is an ordinary action that
 stays on the project's page: move with to=next/delegated/scheduled/tickler
@@ -250,8 +254,8 @@ keeps it there and only changes where it is surfaced (my plate, waiting on
 `person` with chase-by `due`, a reminder on `due`, or the tickler for
 `period`); move to=inbox or to=project takes it OUT of the project. On the
 project row itself (the row that stands for the whole project) use
-rename_project, set_project_goal and archive_project; `name` defaults to
-that project.
+rename_project, set_project_goal, archive_project and star_project /
+unstar_project; `name` defaults to that project.
 """
 
 
@@ -285,6 +289,8 @@ def describe_suggestion(suggestion: dict | None) -> str:
     bits = [f"routing boxes: {gloss}"]
     if suggestion.get("new_project"):
         bits.append("the NEW box is ticked (start a project)")
+    if suggestion.get("star"):
+        bits.append("the ★ box is ticked (star or unstar this project)")
     fields = suggestion.get("fields") or {}
     written = ", ".join(f"{k.upper()}={v!r}" for k, v in sorted(fields.items()) if v)
     if written:

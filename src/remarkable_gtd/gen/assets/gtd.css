@@ -78,6 +78,13 @@ html, body {
 .head-r { text-align: right; font-size: 8pt; line-height: 1.5; flex: none; white-space: nowrap; }
 .head-r .big { font-size: 9.5pt; font-weight: 600; white-space: nowrap; }
 .head-qr { width: 11mm; height: 11mm; margin-left: 3mm; }
+/* hotbar: a tappable link to every starred project, under the header */
+.hotbar { display: flex; flex-wrap: wrap; align-items: center; gap: 1.6mm; margin-top: 2mm; }
+.hotbar .hl { font-size: 10pt; font-weight: 700; margin-right: 0.6mm; }
+.hotbar .hot {
+  border: var(--pen-box); padding: 0.8mm 2.2mm; font-size: 7.5pt; font-weight: 700;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .head-qr svg, .head-qr img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
 
 /* ---------- LEGEND ---------- */
