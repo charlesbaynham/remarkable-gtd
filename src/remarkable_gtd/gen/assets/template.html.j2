@@ -37,7 +37,7 @@
     deterministic rules off for that row and hands the whole row to the
     agent, which then owns the only write. A blank write-in row gets it
     too — on a `newproj` row it is the way to say more than a name. -#}
-{% macro gutter(cat, tid, capture=False) -%}
+{% macro gutter(cat, tid, capture=False, starred=False) -%}
 <div class="gut">
 {%- if cat == 'inbox' -%}
   {{ cell(tid, 'to_next', '→', 'Next') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}{% if not capture %}{{ cell(tid, 'ai', '✦', 'AI') }}{% endif %}
@@ -50,7 +50,7 @@
 {%- elif cat == 'project' -%}
   {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'drop', '✗', 'Drop') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- elif cat == 'projhead' -%}
-  {{ cell(tid, 'done', '✓', 'Finish') }}{{ cell(tid, 'ai', '✦', 'AI') }}
+  {{ cell(tid, 'done', '✓', 'Finish') }}{{ cell(tid, 'star', '☆' if starred else '★', 'Unstar' if starred else 'Star') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- else -%}
   {{ cell(tid, 'done', '✓', 'Done') }}{{ cell(tid, 'to_deleg', '→', 'Deleg') }}{{ defer(tid, 'defer', 'Defer') }}{{ cell(tid, 'ai', '✦', 'AI') }}
 {%- endif -%}
@@ -126,7 +126,7 @@
       <div class="act" data-roi="{{ t.id }}:act">{{ t.act }}{% if t.badge %} <span class="badge">{{ t.badge }}</span>{% endif %}</div>
       {% endif %}
     </div>
-    {% if not t.bare %}{{ gutter(cat, t.id, t.capture) }}{% endif %}
+    {% if not t.bare %}{{ gutter(cat, t.id, t.capture, t.starred) }}{% endif %}
   </div>
   {% if not t.bare %}{{ fields(cat, t) }}{% endif %}
 </div>
@@ -165,6 +165,7 @@
   <span class="k"><span class="kb">✗</span><span class="kl">Drop the step</span></span>
   <span class="k"><span class="kb">✦</span><span class="kl">AI decides this row</span></span>
   <span class="k"><span class="kb">✓</span><span class="kl">Finish = whole project → Done/</span></span>
+  <span class="k"><span class="kb">★</span><span class="kl">Star / unstar = pin to the top</span></span>
 {%- else -%}
   <span class="k"><span class="kb">✓</span><span class="kl">Done</span></span>
   <span class="k"><span class="kb">→</span><span class="kl">Delegate</span></span>
@@ -184,7 +185,7 @@
     <div class="head-l">
       <div class="head-tag">{{ b.tag }}</div>
       <div>
-        <div class="head-title">{{ b.title }}</div>
+        <div class="head-title">{% if b.starred %}★ {% endif %}{{ b.title }}</div>
         <div class="head-sub">{{ b.sub }}</div>
       </div>
     </div>
@@ -195,13 +196,19 @@
     </div>
   </div>
 
+  {#- The hotbar: every starred project, one tap away from every page.
+      `@hot` keeps the key unique on the summary, which links P01 too. -#}
+  {% if b.hotbar %}
+  <div class="hotbar"><span class="hl">★</span>{% for h in b.hotbar %}<span class="hot" data-roi="link:{{ h.ref }}@hot">{{ h.name }}</span>{% endfor %}</div>
+  {% endif %}
+
   {% if b.kind == 'summary' %}
   {#- Project summary: a read-only index. Each block links to that
       project's own page (data-roi link:P01 -> a PDF GoTo annotation). -#}
   <div class="rows">
     {% for p in b['projects'] %}
     <div class="proj-block" data-roi="link:{{ p.ref }}">
-      <div class="pname">{{ p.name }}</div>
+      <div class="pname">{% if p.starred %}★ {% endif %}{{ p.name }}</div>
       {% if p.goal %}<div class="pgoal">{{ p.goal }}</div>{% endif %}
       <div class="pmeta">
         <span class="mono">{{ p.ref }} · p{{ p.page_no }}</span>

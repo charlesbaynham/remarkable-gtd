@@ -17,7 +17,7 @@ EXPECTED_GUTTERS = {
     "delegated": {"done", "to_me", "ai", "defer_1w", "defer_1m", "defer_1q"},
     "tickler": {"activate", "done", "ai", "redefer_1w", "redefer_1m", "redefer_1q"},
     "project": {"done", "to_deleg", "drop", "ai", "defer_1w", "defer_1m", "defer_1q"},
-    "projhead": {"done", "ai"},
+    "projhead": {"done", "star", "ai"},
     "newproj": INBOX_ROUTING | {"ai"},
 }
 PAGE_LEVEL = {"reg:tl", "reg:tr", "reg:bl", "reg:br", "page:qr"}

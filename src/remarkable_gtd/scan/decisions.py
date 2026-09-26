@@ -3,7 +3,8 @@
 A task's gutter may have several inked boxes; precedence resolves them to a
 single ``action`` and conflicts are surfaced as warnings rather than
 silently dropped. ``new_project`` is an orthogonal flag ("the project named
-next to this row does not exist yet — create it"), never a primary action.
+next to this row does not exist yet — create it"), never a primary action;
+so is ``star`` on a project row ("flip this project's star").
 Raw fill ratios are retained under ``ticks`` so a human or downstream agent
 can audit ambiguous rows.
 
@@ -34,7 +35,7 @@ BUCKET_ACTIONS = {
     "project": ["done", "to_deleg", "drop"],
     # A project page's project row, standing for the project itself: ✓ here
     # means the whole project is finished. Its RENAME TO / NEW GOAL slots
-    # are read like any other slot.
+    # are read like any other slot, and its ★ box is the ``star`` flag.
     "projhead": ["done"],
 }
 # A blank capture row on the Inbox page carries the Inbox gutter, so the
@@ -131,6 +132,8 @@ def build_suggestion(
         "action": action,
         "new_project": ticks.get("new_project", (0, False))[1],
     }
+    if "star" in ticks:
+        suggestion["star"] = ticks["star"][1]
     if period is not None:
         suggestion["defer_period"] = period
     if field_texts:
@@ -166,7 +169,8 @@ def resolve_task(
 
     Returns:
         ``(task_entry, warnings)``. When the ✦ AI box is ticked the entry's
-        ``action`` is ``"none"`` and ``new_project`` is ``False``: the
+        ``action`` is ``"none"`` and ``new_project`` (and ``star``, on a
+        project row) is ``False``: the
         deterministic resolution is recorded under ``suggestion`` instead,
         so that no deterministic write can be derived from an AI row.
     """
@@ -185,6 +189,10 @@ def resolve_task(
             for verb, (fill, inked) in sorted(ticks.items())
         },
     }
+    # Only a project row prints a ★ box; ticked, it means "flip the star
+    # this project was printed with" (the tasks entry's ``starred``).
+    if "star" in ticks:
+        entry["star"] = False if ai else ticks["star"][1]
     if not ai and action == "defer" and period is not None:
         entry["defer_period"] = period
     if field_texts:

@@ -114,7 +114,8 @@ goal, open-item count, current next action and a badge saying which view that
 action is surfaced in (`NA`/`DG`/`SC`/`TK`, or `STALLED`) — followed by one
 page per project. A project page opens with a **project row** (`P01-PJ`,
 bucket `projhead`) standing for the project itself: ✓ Finish (the whole
-project is done), ✦ AI, a RENAME TO slot and a two-line NEW GOAL slot. It
+project is done), ★ Star / ☆ Unstar, ✦ AI, a RENAME TO slot and a two-line
+NEW GOAL slot. It
 then prints every unchecked item as a row (`P01-03`) with the Next Actions
 routing — ✓ Done, → Deleg, Defer 1w/1m/1q, ✗ Drop, ✦ AI — and DUE/TO slots,
 because a project's step is an ordinary action; lists the checked ones
@@ -122,6 +123,13 @@ struck through; and ends with four blank add-an-action lines
 (`P01-C1`…`P01-C4`).
 The summary is marked `scan: false` in the manifest and the scanner skips it
 entirely.
+
+A project entry with `"starred": true` is **starred**: it is printed before
+the unstarred ones (so it is `P01`), with a ★ before its name, and every
+page of the sheet carries a **hotbar** under its header — one tappable link
+per starred project (ROI `link:P01@hot`). The ★ box on a project row comes
+back as an orthogonal `star` flag meaning "flip the star this project was
+printed with" (the tasks entry's `starred`); the vault adapter applies it.
 
 ### The New Projects page
 

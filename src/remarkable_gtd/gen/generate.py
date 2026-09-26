@@ -131,12 +131,18 @@ def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
     id survives re-ordering of the *open* items), each routable like a Next
     Actions row, and four blank add-lines ``P01-C1``…``P01-C4`` close the
     page.
+
+    Starred projects (``starred: true``) come first, in their given order,
+    then the rest: refs, pages and the summary all follow that order, so
+    ``P01`` is always the first starred project.
     """
     summary_entries: list[dict] = []
     pages: list[dict] = []
+    projects = sorted(projects, key=lambda p: not p.get("starred"))
     for idx, proj in enumerate(projects, start=1):
         ref = f"P{idx:02d}"
         name = proj.get("name", f"Project {idx}")
+        starred = bool(proj.get("starred"))
         items = proj.get("items") or []
         open_items: list[dict] = []
         done_items: list[str] = []
@@ -164,13 +170,15 @@ def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
             badge = first.get("badge") or "STALLED"
 
         # The project row: the project itself as one scannable row — tick
-        # ✓ Done to finish (archive) it, write a new name or goal in the
-        # slots, or hand it to the agent with ✦ AI.
+        # ✓ Done to finish (archive) it, ★ to star or unstar it, write a new
+        # name or goal in the slots, or hand it to the agent with ✦ AI.
+        # ``starred`` is the state as printed: the ★ box means "flip it".
         head = {
             "id": f"{ref}-PJ",
             "act": name,
             "proj": name,
             "goal": proj.get("goal", ""),
+            "starred": starred,
             "bucket": "projhead",
         }
 
@@ -180,6 +188,7 @@ def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
             "bucket": "project",
             "tag": ref,
             "title": name,
+            "starred": starred,
             "sub": "Project — finish, rename or re-goal it; route, drop or add its actions",
             "goal": proj.get("goal", ""),
             "status": proj.get("status") or [],
@@ -195,6 +204,7 @@ def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
         summary_entries.append({
             "ref": ref,
             "name": name,
+            "starred": starred,
             "goal": proj.get("goal", ""),
             "open_count": len(open_items),
             "next_action": first["act"] if first else "",
@@ -263,6 +273,10 @@ def build_buckets(data: dict) -> list[dict]:
         entry["page_no"] = by_ref[int(entry["ref"][1:])]
     summary["new_page_ref"] = NEW_PROJECTS_KEY
     summary["new_page_no"] = new_projects["page_no"]
+    # The hotbar: a link to every starred project in the head of every page.
+    hotbar = [{"ref": e["ref"], "name": e["name"]} for e in summary["projects"] if e["starred"]]
+    for b in buckets:
+        b["hotbar"] = hotbar
     return buckets
 
 
@@ -453,7 +467,9 @@ def add_internal_links(writer, buckets: list[dict], buckets_rois: list[dict]) ->
 
     ``link:P01`` on the projects summary jumps to that project's page,
     ``link:new-projects`` to the New Projects page, and ``link:projects``
-    on either jumps back. The ROI rectangle is in
+    on either jumps back. Anything after an ``@`` only keeps a key unique
+    on its page: the hotbar's ``link:P01@hot`` sits on the summary next to
+    the summary's own ``link:P01``. The ROI rectangle is in
     page fractions with y measured from the top, so it is flipped into PDF
     user space against the page's media box.
 
@@ -479,7 +495,7 @@ def add_internal_links(writer, buckets: list[dict], buckets_rois: list[dict]) ->
         for key, roi in entry["rois"].items():
             if not key.startswith("link:"):
                 continue
-            target = targets.get(key[len("link:"):])
+            target = targets.get(key[len("link:"):].split("@", 1)[0])
             if target is None:
                 continue
             rect = (
