@@ -67,22 +67,43 @@ def extract_from_rmdoc(
             first_rm = next(iter(rm_files.values())) if rm_files else None
             return pdf_bytes, {0: first_rm} if first_rm else {}
 
-        content = json.loads(z.read(content_name))
-        pages = content.get("cPages", {}).get("pages", [])
-        # Each page entry has {"id": "<uuid>", "redir": {"value": <pdf_page_idx>}}
-        uuid_to_index = {
-            p["id"]: p.get("redir", {}).get("value", i) for i, p in enumerate(pages)
-        }
+        uuid_to_index = page_uuid_to_pdf_index(json.loads(z.read(content_name)))
 
         # Map rm files to page indices
         rm_by_page = {}
         for rm_name, rm_bytes in rm_files.items():
             # rm_name format: {doc_uuid}/{page_uuid}.rm
             page_uuid = Path(rm_name).stem
-            page_index = uuid_to_index.get(page_uuid, 0)
+            page_index = uuid_to_index.get(page_uuid)
+            if page_index is None:
+                # Never guess a page: a layer filed under page 0 used to
+                # overwrite the ink genuinely there.
+                print(f"Warning: layer {rm_name} is on no PDF page; ignored", file=sys.stderr)
+                continue
             rm_by_page[page_index] = rm_bytes
 
         return pdf_bytes, rm_by_page
+
+
+def page_uuid_to_pdf_index(content: dict) -> dict[str, int]:
+    """``{page uuid: PDF page index}`` from an rmdoc's ``.content``.
+
+    Two layouts exist in the wild. ``formatVersion`` 2 has
+    ``cPages.pages: [{"id", "redir": {"value"}}]``; ``formatVersion`` 1 has
+    ``pages: [uuid, ...]`` with ``redirectionPageMap: [pdf index, ...]``.
+    The cloud keeps a sheet in whichever layout it was uploaded in until the
+    tablet rewrites it, so an inked sheet can arrive in either (2026-09-29:
+    a v1 sheet had every layer mapped to page 0, and page 2's ink was lost).
+    A page the user inserted has no PDF page (redirect -1) and is left out.
+    """
+    if "cPages" in content:
+        pages = content["cPages"].get("pages", [])
+        out = {p["id"]: p.get("redir", {}).get("value", i) for i, p in enumerate(pages)}
+    else:
+        pages = content.get("pages") or []
+        redir = content.get("redirectionPageMap") or list(range(len(pages)))
+        out = {uid: redir[i] if i < len(redir) else i for i, uid in enumerate(pages)}
+    return {uid: idx for uid, idx in out.items() if isinstance(idx, int) and idx >= 0}
 
 
 class UnreadableLayer(Exception):

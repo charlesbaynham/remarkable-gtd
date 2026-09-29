@@ -35,6 +35,8 @@ import pymupdf as fitz
 from rmscene import SceneLineItemBlock, read_blocks
 from rmscene.scene_items import PenColor
 
+from remarkable_gtd.rm.annotations import page_uuid_to_pdf_index
+
 HERE = Path(__file__).parent
 RMDOC = HERE / "gtd_sheet.rmdoc"
 MANIFEST = HERE / "sheet.manifest.json"
@@ -45,18 +47,13 @@ RM_HALF_W = 702.0
 PT_PER_PX = 72.0 / 226.0
 
 
-def _page_uuid_to_pdf_index(content: dict) -> dict[str, int]:
-    pages = content.get("cPages", {}).get("pages", [])
-    return {p["id"]: p.get("redir", {}).get("value", i) for i, p in enumerate(pages)}
-
-
 def render_onto_pdf(rmdoc: Path, output_dir: Path) -> None:
     with zipfile.ZipFile(rmdoc) as z:
         names = z.namelist()
         content_name = next(n for n in names if n.endswith(".content"))
         pdf_name = next(n for n in names if n.endswith(".pdf"))
         content = json.loads(z.read(content_name))
-        uuid_to_pdf = _page_uuid_to_pdf_index(content)
+        uuid_to_pdf = page_uuid_to_pdf_index(content)
 
         pdf_bytes = z.read(pdf_name)
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
