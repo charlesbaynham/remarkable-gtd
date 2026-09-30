@@ -181,6 +181,10 @@
 <section class="page" data-bucket="{{ b.key }}">
   <div class="reg tl" data-roi="reg:tl"></div><div class="reg tr" data-roi="reg:tr"></div><div class="reg bl" data-roi="reg:bl"></div><div class="reg br" data-roi="reg:br"></div>
 
+  {#- The nav bar: every section one tap away. The current tab is filled
+      and is not a link; `@nav` keeps keys unique beside other links. -#}
+  <div class="nav">{% for t in b.nav %}{% if t.current %}<span class="tab cur">{{ t.label }}</span>{% else %}<span class="tab" data-roi="link:{{ t.ref }}@nav">{{ t.label }}</span>{% endif %}{% endfor %}</div>
+
   <div class="head">
     <div class="head-l">
       <div class="head-tag">{{ b.tag }}</div>
