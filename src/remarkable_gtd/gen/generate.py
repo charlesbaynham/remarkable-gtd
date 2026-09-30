@@ -222,6 +222,17 @@ def build_project_pages(projects: list[dict]) -> tuple[dict, list[dict]]:
     return summary, pages
 
 
+# Nav bar tabs, (page key, label), in page order.
+NAV_TABS = (
+    ("inbox", "Inbox"),
+    ("next", "Next"),
+    ("delegated", "Delegated"),
+    ("tickler", "Tickler"),
+    ("projects", "Projects"),
+    (NEW_PROJECTS_KEY, "+ New"),
+)
+
+
 def build_buckets(data: dict) -> list[dict]:
     inbox, _ = _with_ids(data.get("inbox", []), "IN")
     nxt, _ = _with_ids(data.get("next", []), "NA")
@@ -277,6 +288,11 @@ def build_buckets(data: dict) -> list[dict]:
     hotbar = [{"ref": e["ref"], "name": e["name"]} for e in summary["projects"] if e["starred"]]
     for b in buckets:
         b["hotbar"] = hotbar
+    # The nav bar: a tab for every section at the top of every page. A
+    # project page counts as under Projects; the current tab is not a link.
+    for b in buckets:
+        here = "projects" if b.get("kind") == "project" else b["key"]
+        b["nav"] = [{"ref": ref, "label": label, "current": ref == here} for ref, label in NAV_TABS]
     return buckets
 
 
@@ -467,9 +483,11 @@ def add_internal_links(writer, buckets: list[dict], buckets_rois: list[dict]) ->
 
     ``link:P01`` on the projects summary jumps to that project's page,
     ``link:new-projects`` to the New Projects page, and ``link:projects``
-    on either jumps back. Anything after an ``@`` only keeps a key unique
-    on its page: the hotbar's ``link:P01@hot`` sits on the summary next to
-    the summary's own ``link:P01``. The ROI rectangle is in
+    on either jumps back; ``link:inbox`` etc. jump to the list pages.
+    Anything after an ``@`` only keeps a key unique on its page: the
+    hotbar's ``link:P01@hot`` sits on the summary next to the summary's own
+    ``link:P01``, and the nav bar's ``link:projects@nav`` beside a project
+    page's ``← Projects``. The ROI rectangle is in
     page fractions with y measured from the top, so it is flipped into PDF
     user space against the page's media box.
 
@@ -477,10 +495,12 @@ def add_internal_links(writer, buckets: list[dict], buckets_rois: list[dict]) ->
     """
     from pypdf.annotations import Link
 
-    # ref ("P01" / "projects" / "new-projects") -> 0-based PDF page index
+    # ref ("P01" / "projects" / "new-projects" / "inbox"...) -> 0-based PDF page index
     targets: dict[str, int] = {}
     for b in buckets:
-        if b.get("kind") == "summary":
+        if b.get("kind") in ("flat", "sectioned"):
+            targets[b["key"]] = b["page_no"] - 1
+        elif b.get("kind") == "summary":
             targets["projects"] = b["page_no"] - 1
         elif b.get("kind") == "newproj":
             targets[NEW_PROJECTS_KEY] = b["page_no"] - 1

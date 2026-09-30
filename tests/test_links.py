@@ -14,8 +14,9 @@ from tests.conftest import needs_chromium
 pytestmark = needs_chromium
 
 
-def _links(pdf_path) -> list[tuple[int, int]]:
-    """``[(source page index, destination page index), ...]`` for every link."""
+def _links(pdf_path, nav: bool = True) -> list[tuple[int, int]]:
+    """``[(source page index, destination page index), ...]`` for every link,
+    or, with ``nav=False``, for every link below the nav bar."""
     from pypdf import PdfReader
 
     reader = PdfReader(pdf_path)
@@ -25,6 +26,8 @@ def _links(pdf_path) -> list[tuple[int, int]]:
         for annot in page.get("/Annots") or []:
             obj = annot.get_object()
             if obj.get("/Subtype") != "/Link":
+                continue
+            if not nav and _in_nav_bar(page, obj):
                 continue
             dest = obj.get("/Dest")
             if dest is None and obj.get("/A") is not None:
@@ -37,6 +40,30 @@ def _links(pdf_path) -> list[tuple[int, int]]:
     return out
 
 
+def _in_nav_bar(page, annot) -> bool:
+    """Whether a link sits in the top 25 mm of the page, i.e. the nav bar."""
+    top = float(page.mediabox.height) - float(annot["/Rect"][3])
+    return top < 25 / 25.4 * 72
+
+
+def test_nav_bar_links_every_page_to_every_section(rendered_sheet, manifest):
+    pdf_path, _ = rendered_sheet
+    pages = list(manifest["pages"])
+    sections = {k: pages.index(make_page_key(k, "2026-05-30"))
+                for k in ("inbox", "next", "delegated", "tickler", "projects", "new-projects")}
+    links = set(_links(pdf_path))
+    for i, key in enumerate(pages):
+        page = key.split("|")[1]
+        here = "projects" if page.startswith("project-") else page
+        rois = manifest["pages"][key]["rois"]
+        for name, target in sections.items():
+            if name == here:
+                assert f"link:{name}@nav" not in rois, key
+            else:
+                assert f"link:{name}@nav" in rois, (key, name)
+                assert (i, target) in links, (key, name)
+
+
 def test_summary_links_to_each_project_and_back(rendered_sheet, manifest):
     pdf_path, _ = rendered_sheet
     pages = list(manifest["pages"])
@@ -45,7 +72,7 @@ def test_summary_links_to_each_project_and_back(rendered_sheet, manifest):
     p2_idx = pages.index(make_page_key("project-02", "2026-05-30"))
     np_idx = pages.index(make_page_key("new-projects", "2026-05-30"))
 
-    links = _links(pdf_path)
+    links = _links(pdf_path, nav=False)
     assert (summary_idx, p1_idx) in links
     assert (summary_idx, p2_idx) in links
     assert (p1_idx, summary_idx) in links
