@@ -186,6 +186,103 @@ AI_SCHEMA = {
     },
 }
 
+# ---- reference notes (gtd.airef/1) -----------------------------------------
+REF_AI_SCHEMA_VERSION = "gtd.airef/1"
+
+REF_OPS = ("reference_append", "reference_edit", "capture")
+
+_REF_OP_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["op", "text", "old", "new", "heading"],
+    "properties": {
+        "op": {"type": "string", "enum": list(REF_OPS)},
+        "text": {"type": ["string", "null"],
+                 "description": "Text to append (reference_append) or to capture (capture)."},
+        "old": {"type": ["string", "null"],
+                "description": "reference_edit only: the printed text to replace, quoted EXACTLY."},
+        "new": {"type": ["string", "null"],
+                "description": "reference_edit only: what it should say instead."},
+        "heading": {"type": ["string", "null"],
+                    "description": "reference_append only: the level-2 section to append under "
+                                   "(null means Notes)."},
+    },
+}
+
+REF_AI_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["handwriting", "understood", "confidence", "note", "operations"],
+    "properties": {
+        "handwriting": {"type": "string",
+                        "description": "Everything handwritten on the page, transcribed verbatim."},
+        "understood": {"type": "boolean"},
+        "confidence": {"type": "number"},
+        "note": {"type": "string"},
+        "operations": {"type": "array", "items": _REF_OP_SCHEMA},
+    },
+}
+
+
+def build_reference_prompt(note: dict, today: str | None = None) -> str:
+    """The brief sent with a page image when ✦ AI is ticked on a reference sheet.
+
+    ``note`` carries ``stem``, ``title``, ``page_no``, ``page_count``, the
+    page's printed text as ``page_text``, ``side_by_side`` (the image is the
+    annotated page beside my handwriting alone) and ``notes_page``.
+    """
+    layout = (
+        "The image has two halves: on the left the page as I annotated it, on "
+        "the right my handwriting alone on a blank page, so you can tell ink "
+        "from print."
+        if note.get("side_by_side")
+        else "The image is the page as I annotated it: printed text with my handwriting over it."
+    )
+    kind = (
+        "the last page of the sheet, a notes page of blank lines for new text"
+        if note.get("notes_page")
+        else "a body page of the note"
+    )
+    return (
+        "You are the agent for a paper GTD (Getting Things Done) system. I "
+        f"printed my reference note \"{note.get('title') or note.get('stem')}\" "
+        "on an e-ink tablet and annotated it by hand. Reference notes are "
+        "things I keep and look things up in, not things I act on. This is "
+        f"page {note.get('page_no')} of {note.get('page_count')}, {kind}. "
+        + layout + "\n\n"
+        "I ticked ✦ AI, which is the only reason you are being asked: read my "
+        "handwriting — margin notes, insertions, corrections, anything written "
+        "in or near the printed text — and say what should change in my vault.\n\n"
+        "The printed text of this page, for context:\n---\n"
+        f"{(note.get('page_text') or '').strip() or '(none)'}\n---\n\n"
+        f"Today is {today or 'unknown'}.\n\n"
+        "Operations (return a list: empty, one, or several):\n"
+        "- reference_append: add text to the note. It is appended under a "
+        "level-2 heading (heading, null means \"Notes\") with today's date; use "
+        "it for new information, observations and margin remarks that belong "
+        "with the note. Nothing already in the note is changed.\n"
+        "- reference_edit: correct existing text. old must quote the printed "
+        "text EXACTLY as printed above, and be long enough to be unique in "
+        "the note; new is what it should say. Use it only when I plainly "
+        "struck out or corrected printed text.\n"
+        "- capture: a to-do or loose thought that is not part of this note "
+        "goes into my GTD Inbox (text).\n\n"
+        "Every key of an operation must be present; set the ones that do not "
+        "apply to null. Answer as JSON: handwriting = verbatim transcription "
+        "of everything handwritten, confidence = 0..1, note = one sentence on "
+        "how you read the page.\n\n"
+        "Rules:\n"
+        "- If you cannot read the handwriting, or can read it but cannot tell "
+        "what I want, set understood = false, leave operations empty and say "
+        "why in note. Never guess: an unapplied page I fix by hand costs me "
+        "seconds, a wrong edit to a note costs me trust in the whole system.\n"
+        "- Never rewrite or tidy the note. Prefer reference_append over "
+        "reference_edit whenever an addition says it.\n"
+        "- You are the only writer for this page: anything that should happen "
+        "must be in your operations or it will not happen."
+    )
+
+
 _BUCKET_LABELS = {"inbox": "Inbox", "next": "Next Actions"}
 
 
@@ -421,6 +518,9 @@ class NullEngine:
         return ""
 
     def interpret(self, image, task, vocabulary=None, today=None, suggestion=None) -> dict | None:
+        return None
+
+    def interpret_reference(self, image, note, today=None) -> dict | None:
         return None
 
 
@@ -663,23 +763,13 @@ class OpenRouterEngine:
             content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
         return clean_reply(content)
 
-    def interpret(
-        self,
-        image,
-        task: dict,
-        vocabulary: dict | None = None,
-        today: str | None = None,
-        suggestion: dict | None = None,
-    ) -> dict:
-        """Structured reading of a whole ✦-AI row: see :data:`AI_SCHEMA`."""
+    def _structured(self, prompt: str, image, schema_name: str, schema: dict) -> dict:
+        """One strict-JSON-schema completion, parsed and sanity-checked."""
         payload = self._payload(
-            self.ai_model,
-            build_ai_prompt(task, vocabulary, today, suggestion),
-            image,
-            AI_ANSWER_TOKENS, self.ai_reasoning,
+            self.ai_model, prompt, image, AI_ANSWER_TOKENS, self.ai_reasoning,
             response_format={
                 "type": "json_schema",
-                "json_schema": {"name": "gtd_ai", "strict": True, "schema": AI_SCHEMA},
+                "json_schema": {"name": schema_name, "strict": True, "schema": schema},
             },
         )
         data = self._post(payload)
@@ -702,6 +792,25 @@ class OpenRouterEngine:
                 f"OpenRouter AI reply has no operations list: {text[:200]}"
             )
         return parsed
+
+    def interpret(
+        self,
+        image,
+        task: dict,
+        vocabulary: dict | None = None,
+        today: str | None = None,
+        suggestion: dict | None = None,
+    ) -> dict:
+        """Structured reading of a whole ✦-AI row: see :data:`AI_SCHEMA`."""
+        return self._structured(
+            build_ai_prompt(task, vocabulary, today, suggestion), image, "gtd_ai", AI_SCHEMA
+        )
+
+    def interpret_reference(self, image, note: dict, today: str | None = None) -> dict:
+        """Structured reading of a ✦-AI reference page: see :data:`REF_AI_SCHEMA`."""
+        return self._structured(
+            build_reference_prompt(note, today), image, "gtd_airef", REF_AI_SCHEMA
+        )
 
 
 _ENGINES: dict[str, type] = {

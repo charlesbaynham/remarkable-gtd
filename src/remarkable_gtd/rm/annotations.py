@@ -218,6 +218,19 @@ def pdf_to_images(
     return paths
 
 
+def _draw_layers(doc, rm_by_page: dict[int, bytes]) -> None:
+    for page_index, rm_bytes in sorted(rm_by_page.items()):
+        if page_index >= len(doc):
+            print(
+                f"Warning: page index {page_index} out of range ({len(doc)} pages)",
+                file=sys.stderr,
+            )
+            continue
+        lines = parse_annotations(rm_bytes)
+        if lines:
+            render_annotations(doc, page_index, lines)
+
+
 def render_rmdoc(rmdoc_path: Path, output_pdf: Path) -> None:
     """Render annotations from an rmdoc file onto a flat PDF.
 
@@ -233,17 +246,27 @@ def render_rmdoc(rmdoc_path: Path, output_pdf: Path) -> None:
         return
 
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    _draw_layers(doc, rm_by_page)
+    doc.save(str(output_pdf))
+    doc.close()
 
-    for page_index, rm_bytes in sorted(rm_by_page.items()):
-        if page_index >= len(doc):
-            print(
-                f"Warning: page index {page_index} out of range ({len(doc)} pages)",
-                file=sys.stderr,
-            )
-            continue
-        lines = parse_annotations(rm_bytes)
-        if lines:
-            render_annotations(doc, page_index, lines)
 
+def render_strokes_only(rmdoc_path: Path, output_pdf: Path) -> None:
+    """Render only the handwriting of an rmdoc: white pages, same sizes, black strokes.
+
+    Lets a scan measure ink without the printed page underneath it being
+    mistaken for ink; the page geometry is the original PDF's, so it warps
+    with the same transform as the annotated render.
+    """
+    _check_deps()
+    pdf_bytes, rm_by_page = extract_from_rmdoc(rmdoc_path)
+    if not pdf_bytes:
+        raise ValueError(f"No PDF found in rmdoc: {rmdoc_path}")
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as original:
+        sizes = [(p.rect.width, p.rect.height) for p in original]
+    doc = fitz.open()
+    for width, height in sizes:
+        doc.new_page(width=width, height=height)
+    _draw_layers(doc, rm_by_page)
     doc.save(str(output_pdf))
     doc.close()

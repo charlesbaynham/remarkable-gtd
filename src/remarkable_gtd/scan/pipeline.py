@@ -46,6 +46,10 @@ class ScanConfig:
     inner_inset_frac: float = 0.22     # excludes the printed box border (tick boxes)
     slot_inset_frac: float = 0.15      # slots are wide; the border is only ~3px but
                                        # a 1px scale mismatch would leak it in
+    # Reference sheets scanned without a strokes layer: the body area holds
+    # printed text too (~9 % dark on a full page), so only more than this
+    # fraction counts as ink there.
+    printed_body_fill_ceiling: float = 0.25
     ocr_engine: str | OcrEngine = "null"  # engine name, or an engine instance
     canvas_width: int = 1404           # reMarkable 2 panel width in px
 
@@ -176,6 +180,131 @@ def _call_interpret(interpret_fn, image, task_entry, vocabulary, today, suggesti
     return interpret_fn(image, task_entry, vocabulary, today, **kwargs)
 
 
+def load_strokes(image_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Load a strokes-only raster (black ink on white) as (gray, binary).
+
+    Fixed threshold, not Otsu: a page with no ink is uniformly white and
+    Otsu has nothing to separate there.
+    """
+    from PIL import Image
+
+    gray = np.asarray(Image.open(image_path).convert("L"))
+    return gray, np.where(gray < 128, 0, 255).astype(np.uint8)
+
+
+@dataclass
+class PreparedPage:
+    """A scan rectified into its manifest page's frame, ready to be measured."""
+
+    page: dict
+    page_key: str
+    parsed: dict
+    gray: np.ndarray               # rectified page as photographed/rasterised
+    binary: np.ndarray
+    ink_binary: np.ndarray         # what to measure ink on: strokes only when given
+    strokes_gray: np.ndarray | None
+    canvas: tuple[int, int]
+    header_qr: str
+    rectify_meta: dict
+    warnings: list[str]
+
+
+def select_page_key(gray: np.ndarray, manifest: dict, page_key: str | None) -> str:
+    """The manifest page this image shows: given, the only one, or read from its QR."""
+    if page_key is not None:
+        return page_key
+    keys = list_page_keys(manifest)
+    if len(keys) == 1:
+        return keys[0]
+    page_key = detect_page_key(gray, manifest)
+    if page_key is None:
+        raise ValueError(
+            "Could not determine the page: no QR matched a manifest "
+            f"key. Pass page_key explicitly; available: {keys}"
+        )
+    return page_key
+
+
+def prepare_page(
+    image_path: Path,
+    manifest: dict,
+    cfg: ScanConfig,
+    page_key: str | None = None,
+    strokes_path: Path | None = None,
+) -> PreparedPage:
+    """Load, identify, rectify and header-check one page image.
+
+    ``strokes_path`` is an optional raster of the same page holding only the
+    handwriting (see ``rm.annotations.render_strokes_only``). It has no
+    registration marks of its own, so it is warped with the transform found
+    on the composite image, and ink is then measured on it.
+    """
+    gray, binary = load_image(image_path)
+    page_key = select_page_key(gray, manifest, page_key)
+    page = get_page(manifest, page_key)
+    warnings: list[str] = []
+
+    marks = find_reg_marks(binary)
+    warped_gray, warped_binary, canvas, residual = rectify(
+        gray, binary, marks, page, canvas_width=cfg.canvas_width
+    )
+    strokes_gray = ink_binary = None
+    if strokes_path is not None:
+        s_gray, s_binary = load_strokes(strokes_path)
+        strokes_gray, ink_binary, _, _ = rectify(
+            s_gray, s_binary, marks, page, canvas_width=cfg.canvas_width
+        )
+    if residual is None or residual > 10:
+        warnings.append(
+            f"rectification quality is poor (residual_px={residual}); "
+            "tick/ink results may be unreliable — check the scan covers the "
+            "whole page including all four corner marks"
+        )
+
+    header_qr = qr_mod.decode_header(warped_gray, page, canvas)
+    if header_qr and header_qr != page_key:
+        warnings.append(
+            f"header QR {header_qr!r} does not match selected page {page_key!r}"
+        )
+    elif not header_qr:
+        warnings.append("header QR could not be decoded")
+
+    return PreparedPage(
+        page=page, page_key=page_key, parsed=parse_page_key(page_key),
+        gray=warped_gray, binary=warped_binary,
+        ink_binary=warped_binary if ink_binary is None else ink_binary,
+        strokes_gray=strokes_gray, canvas=canvas, header_qr=header_qr,
+        rectify_meta={"residual_px": residual, "reg_marks_found": len(marks)},
+        warnings=warnings,
+    )
+
+
+def crop_text(
+    ocr: OcrEngine, gray: np.ndarray, roi: dict, canvas: tuple[int, int],
+    hint: str, inset_px: int = 3, context: str | None = None,
+) -> str:
+    """Transcribe a region: crop just inside the printed border so the box
+    stroke is not read as a character, and hand the engine a hint about what
+    the region is."""
+    x1, y1, x2, y2 = ink_mod.roi_to_pixels(roi, canvas)
+    x1, y1, x2, y2 = x1 + inset_px, y1 + inset_px, x2 - inset_px, y2 - inset_px
+    if x2 <= x1 or y2 <= y1:
+        return ""
+    return ocr.read(gray[y1:y2, x1:x2], hint=hint, context=context)
+
+
+def detect_write_in(
+    binary: np.ndarray, roi: dict, canvas: tuple[int, int], cfg: ScanConfig, floor_px: int,
+) -> tuple[float, bool]:
+    """Ink in a write-in region: the slot fill threshold or the absolute floor."""
+    return ink_mod.detect_box(
+        binary, roi, canvas,
+        inner_inset_frac=cfg.slot_inset_frac,
+        threshold=cfg.slot_fill_threshold,
+        min_ink_px=floor_px,
+    )
+
+
 def run_scan(
     image_path: Path,
     manifest: dict,
@@ -209,47 +338,11 @@ def run_scan(
     task_entries = tasks.get("tasks") or {}
     vocabulary = tasks.get("context")
     image_path = Path(image_path)
-    gray, binary = load_image(image_path)
-
-    # ---- which page is this? -------------------------------------------
-    if page_key is None:
-        keys = list_page_keys(manifest)
-        if len(keys) == 1:
-            page_key = keys[0]
-        else:
-            page_key = detect_page_key(gray, manifest)
-            if page_key is None:
-                raise ValueError(
-                    "Could not determine the page: no QR matched a manifest "
-                    f"key. Pass page_key explicitly; available: {keys}"
-                )
-    page = get_page(manifest, page_key)
-    parsed = parse_page_key(page_key)
-    bucket = page["bucket"]
-    rois = page["rois"]
-    warnings: list[str] = []
-
-    # ---- rectify into the manifest frame --------------------------------
-    marks = find_reg_marks(binary)
-    warped_gray, warped_binary, canvas, residual = rectify(
-        gray, binary, marks, page, canvas_width=cfg.canvas_width
-    )
-    rectify_meta = {"residual_px": residual, "reg_marks_found": len(marks)}
-    if residual is None or residual > 10:
-        warnings.append(
-            f"rectification quality is poor (residual_px={residual}); "
-            "tick/ink results may be unreliable — check the scan covers the "
-            "whole page including all four corner marks"
-        )
-
-    # ---- header QR verification ------------------------------------------
-    header_qr = qr_mod.decode_header(warped_gray, page, canvas)
-    if header_qr and header_qr != page_key:
-        warnings.append(
-            f"header QR {header_qr!r} does not match selected page {page_key!r}"
-        )
-    elif not header_qr:
-        warnings.append("header QR could not be decoded")
+    prep = prepare_page(image_path, manifest, cfg, page_key)
+    page, parsed = prep.page, prep.parsed
+    bucket, rois = page["bucket"], page["rois"]
+    warped_gray, warped_binary, canvas = prep.gray, prep.binary, prep.canvas
+    warnings, header_qr, rectify_meta = prep.warnings, prep.header_qr, prep.rectify_meta
 
     # ---- per-task QR verification ----------------------------------------
     task_qrs = qr_mod.decode_task_qrs(warped_gray, page, canvas)
@@ -260,14 +353,7 @@ def run_scan(
     )
 
     def ocr_crop(roi: dict, hint: str, inset_px: int = 3, context: str | None = None) -> str:
-        """Transcribe a region: crop just inside the printed border so the
-        box stroke is not read as a character, and hand the engine a hint
-        about what the region is."""
-        x1, y1, x2, y2 = ink_mod.roi_to_pixels(roi, canvas)
-        x1, y1, x2, y2 = x1 + inset_px, y1 + inset_px, x2 - inset_px, y2 - inset_px
-        if x2 <= x1 or y2 <= y1:
-            return ""
-        return ocr.read(warped_gray[y1:y2, x1:x2], hint=hint, context=context)
+        return crop_text(ocr, warped_gray, roi, canvas, hint, inset_px, context)
 
     # ---- tasks ------------------------------------------------------------
     tasks_out: list[dict] = []
@@ -293,12 +379,7 @@ def run_scan(
         # Slots: ink presence triggers OCR of that slot.
         field_texts: dict[str, dict] = {}
         for field, roi in slot_rois.items():
-            fill, inked = ink_mod.detect_box(
-                warped_binary, roi, canvas,
-                inner_inset_frac=cfg.slot_inset_frac,
-                threshold=cfg.slot_fill_threshold,
-                min_ink_px=write_in_floor,
-            )
+            fill, inked = detect_write_in(warped_binary, roi, canvas, cfg, write_in_floor)
             if inked:
                 context = None
                 if field == "project" and vocabulary and vocabulary.get("projects"):
@@ -317,11 +398,8 @@ def run_scan(
         act_text = None
         capture_inked: bool | None = None
         if task_bucket in ("capture", "newproj") and "act" in t_rois:
-            capture_fill, capture_inked = ink_mod.detect_box(
-                warped_binary, t_rois["act"], canvas,
-                inner_inset_frac=cfg.slot_inset_frac,
-                threshold=cfg.slot_fill_threshold,
-                min_ink_px=write_in_floor,
+            capture_fill, capture_inked = detect_write_in(
+                warped_binary, t_rois["act"], canvas, cfg, write_in_floor
             )
             if capture_inked:
                 act_text = ocr_crop(t_rois["act"], "capture", inset_px=0)

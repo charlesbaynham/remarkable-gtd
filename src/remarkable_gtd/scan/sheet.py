@@ -11,8 +11,9 @@ import json
 from pathlib import Path
 
 from remarkable_gtd.common.embedded import read_state
-from remarkable_gtd.scan.manifest_io import list_page_keys
+from remarkable_gtd.scan.manifest_io import is_reference_manifest, list_page_keys
 from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
+from remarkable_gtd.scan.reference import run_reference_scan
 
 RASTER_DPI = 226  # reMarkable 2 native: 157.8 mm page -> 1404 px
 
@@ -24,6 +25,7 @@ def scan_pdf(
     work_dir: Path | None = None,
     tasks: dict | None = None,
     dpi: int = RASTER_DPI,
+    strokes_pdf: Path | None = None,
 ) -> dict:
     """Scan every page of an annotated PDF against the manifest's pages.
 
@@ -38,6 +40,11 @@ def scan_pdf(
         or ``{"page_key", "page_no", "error"}``; or, for a page the manifest
         marks ``scan: false`` (the projects summary),
         ``{"page_key", "page_no", "skipped": true}``.
+
+    A reference-note manifest (``doc: "reference"``) sends every page through
+    :func:`remarkable_gtd.scan.reference.run_reference_scan` instead.
+    ``strokes_pdf`` is the same PDF with only the handwriting on blank pages
+    (``rm.annotations.render_strokes_only``); ink is measured on it.
     """
     import pymupdf
 
@@ -50,6 +57,8 @@ def scan_pdf(
         raise ValueError("manifest has no pages")
 
     doc = pymupdf.open(str(pdf_path))
+    strokes_doc = pymupdf.open(str(strokes_pdf)) if strokes_pdf else None
+    reference = is_reference_manifest(manifest)
     page_results: list[dict] = []
     warnings: list[str] = []
     if len(doc) != len(keys):
@@ -72,7 +81,17 @@ def scan_pdf(
         img_path = work_dir / f"{pdf_path.stem}.page{i + 1}.png"
         pix.save(str(img_path))
         try:
-            decisions = run_scan(img_path, manifest, cfg, page_key, tasks=tasks)
+            if reference:
+                strokes_path = None
+                if strokes_doc is not None and i < len(strokes_doc):
+                    strokes_path = work_dir / f"{pdf_path.stem}.page{i + 1}.strokes.png"
+                    strokes_doc[i].get_pixmap(matrix=mat).save(str(strokes_path))
+                decisions = run_reference_scan(
+                    img_path, manifest, cfg, page_key, tasks=tasks,
+                    strokes_path=strokes_path, page_text=page.get_text(),
+                )
+            else:
+                decisions = run_scan(img_path, manifest, cfg, page_key, tasks=tasks)
             result = {"page_key": page_key, "page_no": i + 1, **decisions}
             if page_entry.get("project"):
                 result["project"] = page_entry["project"]
@@ -80,6 +99,8 @@ def scan_pdf(
         except Exception as exc:  # keep going: one bad page must not lose the rest
             page_results.append({"page_key": page_key, "page_no": i + 1, "error": str(exc)})
     doc.close()
+    if strokes_doc is not None:
+        strokes_doc.close()
 
     return {
         "schema": "gtd.decisions/1",
@@ -108,7 +129,7 @@ def scan_rmdoc(
     Raises:
         ValueError: If no manifest is available.
     """
-    from remarkable_gtd.rm.annotations import extract_from_rmdoc, render_rmdoc
+    from remarkable_gtd.rm.annotations import extract_from_rmdoc, render_rmdoc, render_strokes_only
 
     rmdoc_path = Path(rmdoc_path)
     work_dir = Path(work_dir)
@@ -129,7 +150,11 @@ def scan_rmdoc(
 
     annotated = work_dir / f"{rmdoc_path.stem}.annotated.pdf"
     render_rmdoc(rmdoc_path, annotated)
-    decisions = scan_pdf(annotated, manifest, cfg, work_dir, tasks=tasks)
+    strokes = None
+    if is_reference_manifest(manifest):
+        strokes = work_dir / f"{rmdoc_path.stem}.strokes.pdf"
+        render_strokes_only(rmdoc_path, strokes)
+    decisions = scan_pdf(annotated, manifest, cfg, work_dir, tasks=tasks, strokes_pdf=strokes)
     decisions["source_rmdoc"] = str(rmdoc_path)
     (work_dir / f"{rmdoc_path.stem}.decisions.json").write_text(
         json.dumps(decisions, indent=2), encoding="utf-8"
