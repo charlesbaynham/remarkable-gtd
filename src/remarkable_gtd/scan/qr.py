@@ -23,26 +23,34 @@ class QRBackend(Protocol):
 
 
 class OpenCVBackend:
-    """QR backend using ``cv2.QRCodeDetector``."""
+    """QR backend using ``cv2.QRCodeDetector``, then its ArUco-based sibling.
+
+    The classic detector misses some perfectly clean symbols (a 14 mm
+    ``RF-C3`` among them); the ArUco-based one, where this OpenCV has it,
+    finds those.
+    """
 
     def decode_all(self, img: np.ndarray) -> list[tuple[str, list]]:
         import cv2
 
-        detector = cv2.QRCodeDetector()
-        try:
-            retval, decoded_info, points, _ = detector.detectAndDecodeMulti(img)
-        except Exception:
-            retval = False
-
-        if not retval:
-            return []
-
-        results = []
-        for text, pts in zip(decoded_info, points if points is not None else []):
-            if text:
-                poly = pts.tolist() if hasattr(pts, "tolist") else list(pts)
-                results.append((text, poly))
-        return results
+        detectors = [cv2.QRCodeDetector()]
+        if hasattr(cv2, "QRCodeDetectorAruco"):
+            detectors.append(cv2.QRCodeDetectorAruco())
+        for detector in detectors:
+            try:
+                retval, decoded_info, points, _ = detector.detectAndDecodeMulti(img)
+            except Exception:
+                continue
+            if not retval:
+                continue
+            results = []
+            for text, pts in zip(decoded_info, points if points is not None else []):
+                if text:
+                    poly = pts.tolist() if hasattr(pts, "tolist") else list(pts)
+                    results.append((text, poly))
+            if results:
+                return results
+        return []
 
 
 class PyzbarBackend:

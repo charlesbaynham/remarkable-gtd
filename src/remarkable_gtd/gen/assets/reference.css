@@ -79,6 +79,13 @@ html.chrome, html.chrome body { background: transparent; }
 }
 
 /* ---------- NOTES PAGE ---------- */
-.ref .notes-title { font-size: 17pt; font-weight: 700; line-height: 1.2; margin: 0 0 1.5mm; }
+.ref .notes-title {  /* one line: the rows below must stay inside the body area */
+  font-size: 17pt; font-weight: 700; line-height: 1.2; margin: 0 0 1.5mm;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .ref .notes-hint { font-size: 9.5pt; font-weight: 500; line-height: 1.4; margin: 0 0 4mm; }
 .ref .notes-body .row { border-bottom: var(--pen); }
+/* Notes-page row QRs are larger than the daily sheet's: they sit on the
+   body area's plain white and cost nothing, and decode more reliably. */
+.ref .rail { width: 14mm; }
+.ref .rail .qr { width: 14mm; height: 14mm; }
