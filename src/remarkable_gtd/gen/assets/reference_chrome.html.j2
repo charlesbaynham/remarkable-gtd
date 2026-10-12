@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" class="chrome"><head><meta charset="utf-8" />
+<style>
+{{ gtd_css | safe }}
+{{ css | safe }}
+@page { size: 157.8mm 210.4mm; margin: 0; }
+</style></head>
+<body>
+{#- Fixed-geometry chrome for one page of a reference sheet. It is printed
+    on its own and stamped over the flowed body page, so the page number and
+    the page QR can differ per page while every ROI is measured, not guessed. -#}
+<section class="page ref">
+  <div class="reg tl" data-roi="reg:tl"></div><div class="reg tr" data-roi="reg:tr"></div><div class="reg bl" data-roi="reg:bl"></div><div class="reg br" data-roi="reg:br"></div>
+  <header class="rh">
+    <div class="rh-t">
+      <div class="rh-title">{{ title }}</div>
+      <div class="rh-sub mono">Reference · {{ 'notes page' if notes else 'page' }} {{ page_no }}/{{ total }}</div>
+    </div>
+    <div class="rh-ai"><span class="box" data-roi="page:ai"></span><span class="gl">✦ AI</span></div>
+    <span class="rh-qr" data-roi="page:qr"><img src="{{ qr(page_key) }}" alt="page code" /></span>
+  </header>
+  <div class="body-area" data-roi="page:body">
+  {% if notes %}
+    <div class="notes-body">
+      <h1 class="notes-title">{{ title }}</h1>
+      <p class="notes-hint">{{ notes.hint }}</p>
+      {% for r in notes.rows %}
+      <div class="row" data-roi="{{ r.id }}:row"><div class="row-top">
+        <div class="rail"><span class="qr" data-roi="{{ r.id }}:qr"><img src="{{ qr(r.id) }}" alt="{{ r.id }}" /></span><span class="code mono">{{ r.id }}</span></div>
+        <div class="act-wrap"><div class="act cap" data-roi="{{ r.id }}:act"></div></div>
+      </div></div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  </div>
+</section>
+</body></html>

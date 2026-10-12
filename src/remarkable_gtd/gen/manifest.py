@@ -48,6 +48,7 @@ def build_manifest(
     buckets_rois: list[dict],
     the_date: date,
     page_w_mm: float,
+    extra: dict | None = None,
 ) -> dict:
     """Assemble the manifest document (schema ``gtd.manifest/1``).
 
@@ -58,6 +59,7 @@ def build_manifest(
             skips) and ``project`` (``{index, name}`` on a project page).
         the_date: The sheet date (used as the top-level ``date`` field).
         page_w_mm: Physical page width in mm (157.8 for reMarkable 2).
+        extra: Top-level keys to add (a reference sheet's ``doc`` and ``note``).
     """
     pages: dict = {}
     for entry in buckets_rois:
@@ -75,6 +77,7 @@ def build_manifest(
         "schema": MANIFEST_SCHEMA,
         "date": the_date.strftime("%Y-%m-%d"),
         "page_w_mm": page_w_mm,
+        **(extra or {}),
         "pages": pages,
     }
 

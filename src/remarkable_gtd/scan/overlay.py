@@ -15,6 +15,7 @@ Colours:
     grey    action-text region (transcribed only when Edit is ticked, or
             always on a blank capture row)
     cyan    internal hyperlink targets on the project pages (never sampled)
+    amber   a reference sheet's body area (ink there is reported, never read)
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ COLOURS_BGR = {
     "reg": (200, 0, 200),
     "act": (140, 140, 140),
     "link": (0, 140, 200),
+    "body": (0, 170, 220),
 }
 
 
@@ -39,6 +41,8 @@ def classify(key: str) -> str:
         return "reg"
     if key.startswith("link:"):
         return "link"
+    if key == "page:body":
+        return "body"
     if key == "page:qr" or key.endswith(":qr"):
         return "qr"
     if key.endswith(":act"):
