@@ -26,6 +26,7 @@ def scan_pdf(
     tasks: dict | None = None,
     dpi: int = RASTER_DPI,
     strokes_pdf: Path | None = None,
+    today: str | None = None,
 ) -> dict:
     """Scan every page of an annotated PDF against the manifest's pages.
 
@@ -45,6 +46,8 @@ def scan_pdf(
     :func:`remarkable_gtd.scan.reference.run_reference_scan` instead.
     ``strokes_pdf`` is the same PDF with only the handwriting on blank pages
     (``rm.annotations.render_strokes_only``); ink is measured on it.
+    ``today`` (ISO date, default the real today) is what an AI reading of a
+    reference page is told; ``scan_rmdoc`` takes it too.
     """
     import pymupdf
 
@@ -88,7 +91,7 @@ def scan_pdf(
                     strokes_doc[i].get_pixmap(matrix=mat).save(str(strokes_path))
                 decisions = run_reference_scan(
                     img_path, manifest, cfg, page_key, tasks=tasks,
-                    strokes_path=strokes_path, page_text=page.get_text(),
+                    strokes_path=strokes_path, page_text=page.get_text(), today=today,
                 )
             else:
                 decisions = run_scan(img_path, manifest, cfg, page_key, tasks=tasks)
@@ -117,6 +120,7 @@ def scan_rmdoc(
     cfg: ScanConfig | None = None,
     manifest: dict | None = None,
     tasks: dict | None = None,
+    today: str | None = None,
 ) -> tuple[dict, dict, dict | None, Path]:
     """Render an ``.rmdoc``'s strokes onto its PDF and scan every page.
 
@@ -154,7 +158,7 @@ def scan_rmdoc(
     if is_reference_manifest(manifest):
         strokes = work_dir / f"{rmdoc_path.stem}.strokes.pdf"
         render_strokes_only(rmdoc_path, strokes)
-    decisions = scan_pdf(annotated, manifest, cfg, work_dir, tasks=tasks, strokes_pdf=strokes)
+    decisions = scan_pdf(annotated, manifest, cfg, work_dir, tasks=tasks, strokes_pdf=strokes, today=today)
     decisions["source_rmdoc"] = str(rmdoc_path)
     (work_dir / f"{rmdoc_path.stem}.decisions.json").write_text(
         json.dumps(decisions, indent=2), encoding="utf-8"

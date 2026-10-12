@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 import zipfile
+
+from datetime import date
 
 import numpy as np
 import pytest
@@ -33,7 +36,7 @@ PEN_WIDTH = 20
 def stroke_layer(polylines: list[list[tuple[float, float]]]) -> bytes:
     """A v6 layer of black ballpoint strokes; points are in device stroke space."""
     blocks = [
-        AuthorIdsBlock(author_uuids={1: __import__("uuid").uuid4()}),
+        AuthorIdsBlock(author_uuids={1: uuid.uuid4()}),
         MigrationInfoBlock(migration_id=CrdtId(1, 1), is_device=True),
         PageInfoBlock(loads_count=1, merges_count=0, text_chars_count=0, text_lines_count=0),
         SceneTreeBlock(tree_id=LAYER, node_id=CrdtId(0, 0), is_update=True, parent_id=ROOT),
@@ -82,7 +85,6 @@ class Ink:
 
 
 def make_rmdoc(path, pdf_path, layers: dict[int, list]) -> None:
-    page_ids = [f"page-{i}" for i in range(len(layers) and max(layers) + 1)]
     import pymupdf
 
     with pymupdf.open(str(pdf_path)) as doc:
@@ -157,7 +159,8 @@ def test_ai_tick_ink_elsewhere_and_notes_line(sheet, tmp_path):
         last - 1: ink.scribble(page_rois(manifest, keys, last)["RF-C1:act"], rows=2),
     })
     engine = RefEngine(READING)
-    decisions, *_ = scan_rmdoc(tmp_path / "s.rmdoc", tmp_path / "w", ScanConfig(ocr_engine=engine))
+    decisions, *_ = scan_rmdoc(tmp_path / "s.rmdoc", tmp_path / "w", ScanConfig(ocr_engine=engine),
+                               today="2026-12-01")
     pages = decisions["pages"]
 
     assert pages[0]["ai"] is False and pages[0]["ink_elsewhere"] is False
@@ -170,7 +173,8 @@ def test_ai_tick_ink_elsewhere_and_notes_line(sheet, tmp_path):
     assert shape[1] == 2 * 1404                       # annotated page beside the handwriting alone
     assert note["side_by_side"] is True and note["page_no"] == 2 and note["page_count"] == last
     assert note["stem"] == "Flat hot water system" and "Paragraph" in note["page_text"]
-    assert today == "2026-10-12"
+    assert today == "2026-12-01"                      # not the render date
+    assert "Paragraph 1." in note["source"] and note["suggestions"] == {}
 
     rows = {t["id"]: t for t in pages[-1]["tasks"]}
     assert rows["RF-C1"]["inked"] is True and rows["RF-C1"]["act_text"] == "<capture>"
@@ -216,10 +220,15 @@ def test_plain_pdf_scan_is_approximate(sheet, tmp_path):
         page.draw_line((x0, y0), (x1, y1), width=2)
         page.draw_line((x0, y1), (x1, y0), width=2)
         doc.save(str(marked))
-    decisions = scan_pdf(marked, manifest, ScanConfig(), tmp_path / "w")
+    engine = RefEngine(READING)
+    decisions = scan_pdf(marked, manifest, ScanConfig(ocr_engine=engine), tmp_path / "w")
     first, second = decisions["pages"][0], decisions["pages"][1]
     assert first["ai"] is True and second["ai"] is False
-    assert first["ink_approximate"] is True and first["ink_elsewhere"] is False
+    assert first["ink_approximate"] is True and first["ink_elsewhere"] is None
+    assert first["ai_reading"] == READING
+    (shape, note, today), = engine.interpretations
+    assert shape[1] == 1404 and note["side_by_side"] is False   # annotated page alone
+    assert today == date.today().isoformat()
 
 
 def test_render_strokes_only_keeps_page_sizes_and_drops_print(sheet, tmp_path):
@@ -235,3 +244,69 @@ def test_render_strokes_only_keeps_page_sizes_and_drops_print(sheet, tmp_path):
         dark = np.frombuffer(strokes[0].get_pixmap(dpi=50, colorspace=pymupdf.csGRAY).samples, np.uint8) < 128
         blank = np.frombuffer(strokes[1].get_pixmap(dpi=50, colorspace=pymupdf.csGRAY).samples, np.uint8) < 128
         assert dark.any() and not blank.any()
+
+
+def test_ai_page_demotes_notes_lines_to_suggestions(sheet, tmp_path):
+    """One writer per page: with AI ticked a notes line is a hint, never an act_text."""
+    pdf, manifest, keys, ink = sheet
+    last = len(keys)
+    make_rmdoc(tmp_path / "s.rmdoc", pdf, {
+        last - 1: ink.cross(page_rois(manifest, keys, last)["page:ai"])
+        + ink.scribble(page_rois(manifest, keys, last)["RF-C1:act"], rows=2),
+    })
+    engine = RefEngine(READING)
+    decisions, *_ = scan_rmdoc(tmp_path / "s.rmdoc", tmp_path / "w", ScanConfig(ocr_engine=engine))
+    page = decisions["pages"][-1]
+    row = {t["id"]: t for t in page["tasks"]}["RF-C1"]
+    assert page["ai"] is True and row["inked"] is True
+    assert "act_text" not in row and row["suggestion"] == {"text": "<capture>"}
+    (_shape, note, _today), = engine.interpretations
+    assert note["suggestions"] == {"RF-C1": "<capture>"}
+    from remarkable_gtd.scan.ocr import build_reference_prompt
+    assert "will NOT be applied" in build_reference_prompt(note)
+
+
+def test_margin_ink_is_reported(sheet, tmp_path):
+    pdf, manifest, keys, ink = sheet
+    rois = page_rois(manifest, keys, 3)
+    margin = {"x": 0.02, "y": rois["page:body"]["y"] + 0.1, "w": 0.04, "h": 0.1}   # left of the text column
+    foot = {"x": 0.3, "y": 0.96, "w": 0.3, "h": 0.02}                              # under the body area
+    make_rmdoc(tmp_path / "s.rmdoc", pdf, {2: ink.scribble(margin), 3: ink.scribble(foot, rows=2)})
+    decisions, *_ = scan_rmdoc(tmp_path / "s.rmdoc", tmp_path / "w", ScanConfig())
+    pages = decisions["pages"]
+    assert pages[2]["ink_elsewhere"] is True and pages[3]["ink_elsewhere"] is True
+    assert pages[1]["ink_elsewhere"] is False
+
+
+def test_ink_anywhere_in_a_notes_row_is_the_line(sheet, tmp_path):
+    """The row has one write-in area: ink low in the row is read, and is not 'elsewhere'."""
+    pdf, manifest, keys, ink = sheet
+    last = len(keys)
+    rois = page_rois(manifest, keys, last)
+    row, act = rois["RF-C2:row"], rois["RF-C2:act"]
+    assert abs(act["y"] + act["h"] - (row["y"] + row["h"])) * 210.4 < 1.0     # act fills the row
+    low = {"x": act["x"], "y": act["y"] + act["h"] * 0.55, "w": act["w"], "h": act["h"] * 0.4}
+    make_rmdoc(tmp_path / "s.rmdoc", pdf, {last - 1: ink.scribble(low, rows=3)})
+    engine = RefEngine()
+    decisions, *_ = scan_rmdoc(tmp_path / "s.rmdoc", tmp_path / "w", ScanConfig(ocr_engine=engine))
+    page = decisions["pages"][-1]
+    rows = {t["id"]: t for t in page["tasks"]}
+    assert rows["RF-C2"]["inked"] is True and rows["RF-C2"]["act_text"] == "<capture>"
+    assert page["ink_elsewhere"] is False
+
+
+def _numbered_source(n=400):
+    return "\n".join(f"Line {i} about the **boiler** and [[Kitchen refit|the kitchen]] number {i}" for i in range(n))
+
+
+def test_source_for_page_whole_when_short_and_a_window_when_long():
+    from remarkable_gtd.scan.reference import source_for_page
+
+    short = "# T\n\nSee **bold** text."
+    assert source_for_page(short, "anything") == short
+    long = _numbered_source()
+    page_text = "Line 200 about the boiler and the kitchen number 200 Line 201 about the boiler and the kitchen number 201"
+    excerpt = source_for_page(long, page_text)
+    assert "Line 200 about the **boiler** and [[Kitchen refit|the kitchen]]" in excerpt
+    assert "Line 5 " not in excerpt and len(excerpt) <= 6000
+    assert source_for_page(long, "Notes page: nothing from the note") == ""

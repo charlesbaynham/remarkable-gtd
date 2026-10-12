@@ -224,12 +224,27 @@ REF_AI_SCHEMA = {
 }
 
 
+def _describe_note_suggestions(suggestions: dict | None) -> str:
+    if not suggestions:
+        return ""
+    lines = "; ".join(f'{row}: "{text}"' for row, text in sorted(suggestions.items()))
+    return (
+        "\nFOR CONTEXT ONLY — hints, not instructions. Plain Python read the "
+        f"blank lines of the notes page as: {lines}. Those readings will NOT "
+        "be applied: you are the only thing that writes to my vault for this "
+        "page, so anything written on those lines that should be kept must "
+        "be in your operations.\n"
+    )
+
+
 def build_reference_prompt(note: dict, today: str | None = None) -> str:
     """The brief sent with a page image when ✦ AI is ticked on a reference sheet.
 
     ``note`` carries ``stem``, ``title``, ``page_no``, ``page_count``, the
-    page's printed text as ``page_text``, ``side_by_side`` (the image is the
-    annotated page beside my handwriting alone) and ``notes_page``.
+    page's printed text as ``page_text``, the note's markdown for the page as
+    ``source``, ``side_by_side`` (the image is the annotated page beside my
+    handwriting alone), ``notes_page`` and ``suggestions`` (``{row id: text}``,
+    plain-Python readings of the notes lines, offered as inert hints).
     """
     layout = (
         "The image has two halves: on the left the page as I annotated it, on "
@@ -255,16 +270,22 @@ def build_reference_prompt(note: dict, today: str | None = None) -> str:
         "in or near the printed text — and say what should change in my vault.\n\n"
         "The printed text of this page, for context:\n---\n"
         f"{(note.get('page_text') or '').strip() or '(none)'}\n---\n\n"
-        f"Today is {today or 'unknown'}.\n\n"
+        "The note's markdown source for this page (the printed text above is "
+        "this, rendered: no ** or [[ ]], lines re-wrapped):\n---\n"
+        f"{(note.get('source') or '').strip() or '(not available)'}\n---\n\n"
+        f"Today is {today or 'unknown'}.\n"
+        + _describe_note_suggestions(note.get("suggestions"))
+        + "\n"
         "Operations (return a list: empty, one, or several):\n"
         "- reference_append: add text to the note. It is appended under a "
         "level-2 heading (heading, null means \"Notes\") with today's date; use "
         "it for new information, observations and margin remarks that belong "
         "with the note. Nothing already in the note is changed.\n"
-        "- reference_edit: correct existing text. old must quote the printed "
-        "text EXACTLY as printed above, and be long enough to be unique in "
-        "the note; new is what it should say. Use it only when I plainly "
-        "struck out or corrected printed text.\n"
+        "- reference_edit: correct existing text. old must be copied EXACTLY "
+        "from the markdown source above, within a single line (never "
+        "spanning a line break) and long enough to be unique in the note; "
+        "new is what it should say. Use it only when I plainly struck out "
+        "or corrected printed text.\n"
         "- capture: a to-do or loose thought that is not part of this note "
         "goes into my GTD Inbox (text).\n\n"
         "Every key of an operation must be present; set the ones that do not "

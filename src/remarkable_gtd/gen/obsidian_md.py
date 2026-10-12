@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from urllib.parse import unquote
 
 from markdown_it import MarkdownIt
 from markdown_it.common.utils import escapeHtml
@@ -88,7 +89,7 @@ def build_parser(resolve_embed: EmbedResolver) -> MarkdownIt:
         src = token.attrGet("src") or ""
         name = token.content or src
         if _is_local(src):
-            return resolve_embed(src.rsplit("/", 1)[-1], None)
+            return resolve_embed(unquote(src).rsplit("/", 1)[-1], None)
         return f'<span class="att">image: {escapeHtml(name)}</span>'
 
     def checkbox(renderer, tokens, idx, options, env: EnvType) -> str:

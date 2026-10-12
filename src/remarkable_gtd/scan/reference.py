@@ -8,6 +8,8 @@ box, and the AI is the page's only writer, as on the daily sheet.
 """
 from __future__ import annotations
 
+import re
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -17,30 +19,63 @@ from remarkable_gtd.scan import qr as qr_mod
 from remarkable_gtd.scan.decisions import build_decisions
 from remarkable_gtd.scan.ocr import get_engine
 from remarkable_gtd.scan.pipeline import (
-    ScanConfig, crop_text, detect_write_in, prepare_page, task_ids_from_rois,
+    _FAILED_AI, ScanConfig, crop_text, detect_write_in, prepare_page, task_ids_from_rois,
 )
 
-_FAILED_REF_AI = {"handwriting": "", "understood": False, "confidence": 0.0, "operations": []}
+SOURCE_CAP_CHARS = 6000
+SOURCE_CONTEXT_LINES = 2
 
 
-def _ink_elsewhere(prep, cfg: ScanConfig, floor_px: int, strokes: bool) -> tuple[float, bool]:
-    """Ink in the body area, outside the notes page's own write-in rows."""
-    binary = prep.ink_binary
-    row_rois = [r for k, r in prep.page["rois"].items() if k.endswith(":row")]
-    if row_rois:
-        binary = binary.copy()
-        for roi in row_rois:
+def _plain(markdown_line: str) -> str:
+    """A source line as it prints: markup dropped, wiki-links as their alias."""
+    line = re.sub(r"!?\[\[([^\]|]*)(?:\|([^\]]*))?\]\]", lambda m: m[2] or m[1], markdown_line)
+    return re.sub(r"\s+", " ", re.sub(r"[*_`#>|~\[\]]|^\s*[-+] (\[.\])?", " ", line)).strip()
+
+
+def source_for_page(source: str, page_text: str, cap: int = SOURCE_CAP_CHARS) -> str:
+    """The note's markdown that this page prints: what the AI must quote ``old`` from.
+
+    A short note goes in whole. Otherwise the span from the first to the last
+    source line whose text appears on the page, plus a little context, capped.
+    """
+    if len(source) <= cap:
+        return source
+    printed = re.sub(r"\s+", " ", page_text)
+    lines = source.splitlines()
+    hits = [i for i, line in enumerate(lines)
+            if len(plain := _plain(line)) >= 12 and plain[:40] in printed]
+    if not hits:
+        return ""
+    first, last = max(0, hits[0] - SOURCE_CONTEXT_LINES), hits[-1] + SOURCE_CONTEXT_LINES + 1
+    return "\n".join(lines[first:last])[:cap]
+
+
+def _ink_elsewhere(prep, floor_px: int) -> tuple[float, bool]:
+    """Handwriting anywhere on the page except the header band and the write-in lines.
+
+    Only meaningful on a strokes-only layer, where there is no printed text to
+    avoid, so margins count: that is where margin notes go.
+    """
+    binary = prep.ink_binary.copy()
+    rois = prep.page["rois"]
+    header_bottom = ink_mod.roi_to_pixels(rois["page:body"], prep.canvas)[1]
+    binary[:header_bottom, :] = 255
+    for key, roi in rois.items():
+        if key.endswith(":act"):
             x1, y1, x2, y2 = ink_mod.roi_to_pixels(roi, prep.canvas)
             binary[y1:y2, x1:x2] = 255
-    body = prep.page["rois"]["page:body"]
-    if strokes:
-        return ink_mod.detect_box(
-            binary, body, prep.canvas, inner_inset_frac=0.0, threshold=1.0, min_ink_px=floor_px
-        )
-    # No stroke layer: the printed text is in the measurement too, so only
-    # a body far fuller than any printed page can be called inked.
-    fill, _ = ink_mod.detect_box(binary, body, prep.canvas, inner_inset_frac=0.0, threshold=1.0)
-    return fill, fill > cfg.printed_body_fill_ceiling
+    whole_page = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+    return ink_mod.detect_box(
+        binary, whole_page, prep.canvas, inner_inset_frac=0.0, threshold=1.0, min_ink_px=floor_px
+    )
+
+
+def _body_fill(prep) -> float:
+    """Dark fraction of the body area, printed text included: informational only."""
+    return ink_mod.detect_box(
+        prep.ink_binary, prep.page["rois"]["page:body"], prep.canvas,
+        inner_inset_frac=0.0, threshold=1.0,
+    )[0]
 
 
 def _interpretation_image(prep) -> tuple[np.ndarray, bool]:
@@ -58,6 +93,7 @@ def run_reference_scan(
     tasks: dict | None = None,
     strokes_path: Path | None = None,
     page_text: str = "",
+    today: str | None = None,
 ) -> dict:
     """Scan one page of a reference sheet.
 
@@ -67,11 +103,15 @@ def run_reference_scan(
             ink, same geometry. With it ink is measured without the printed
             page in the way; without it ``ink_elsewhere`` is approximate.
         page_text: The page's printed text, handed to the AI as context.
+        today: ISO date handed to the AI (default: today, not the render
+            date: a sheet stays on the device for months).
 
     Returns:
         A decisions document (``gtd.decisions/2`` envelope) with ``note``,
-        ``ai``, ``ai_reading`` (when ticked), ``ink_elsewhere``, ``ink_fill``
-        and, on the notes page, one entry per RF-C line under ``tasks``.
+        ``ai``, ``ai_reading`` (when ticked), ``ink_elsewhere`` (``None``
+        without a strokes layer), ``ink_fill`` and, on the notes page, one
+        entry per RF-C line under ``tasks``. On an AI page the lines carry a
+        ``suggestion`` and no ``act_text``: the AI is the page's only writer.
     """
     cfg = cfg or ScanConfig()
     prep = prepare_page(image_path, manifest, cfg, page_key, strokes_path)
@@ -99,14 +139,21 @@ def run_reference_scan(
             "qr_verified": task_qrs.get(task_id) == task_id,
         }
         if inked:
-            entry["act_text"] = crop_text(ocr, reading_gray, act, canvas, "capture", inset_px=0)
+            text = crop_text(ocr, reading_gray, act, canvas, "capture", inset_px=0)
+            if ai:
+                entry["suggestion"] = {"text": text}
+            else:
+                entry["act_text"] = text
         elif fill > 0:
             warnings.append(
                 f"{task_id}: ink too faint to read as a note (fill={fill:.4f}); the line was left alone"
             )
         rows.append(entry)
 
-    ink_fill, ink_elsewhere = _ink_elsewhere(prep, cfg, floor_px, strokes_path is not None)
+    if strokes_path is not None:
+        ink_fill, ink_elsewhere = _ink_elsewhere(prep, floor_px)
+    else:
+        ink_fill, ink_elsewhere = _body_fill(prep), None
 
     ai_reading = None
     if ai:
@@ -116,13 +163,15 @@ def run_reference_scan(
             "stem": note.get("stem"), "title": note.get("title"),
             "page_no": page["page_no"], "page_count": len(manifest["pages"]),
             "page_text": page_text, "side_by_side": side_by_side,
+            "source": source_for_page((tasks or {}).get("note", {}).get("source", ""), page_text),
+            "suggestions": {r["id"]: r["suggestion"]["text"] for r in rows if "suggestion" in r},
             "notes_page": page["bucket"] == "refnotes",
         }
         if interpret is not None:
             try:
-                ai_reading = interpret(image, context, manifest.get("date"))
+                ai_reading = interpret(image, context, today or date.today().isoformat())
             except Exception as exc:
-                ai_reading = {**_FAILED_REF_AI, "note": f"interpretation failed: {exc}"}
+                ai_reading = {**_FAILED_AI, "note": f"interpretation failed: {exc}"}
                 warnings.append(f"page {page['page_no']}: AI interpretation failed — {exc}")
         if ai_reading is None:
             warnings.append(

@@ -46,10 +46,6 @@ class ScanConfig:
     inner_inset_frac: float = 0.22     # excludes the printed box border (tick boxes)
     slot_inset_frac: float = 0.15      # slots are wide; the border is only ~3px but
                                        # a 1px scale mismatch would leak it in
-    # Reference sheets scanned without a strokes layer: the body area holds
-    # printed text too (~9 % dark on a full page), so only more than this
-    # fraction counts as ink there.
-    printed_body_fill_ceiling: float = 0.25
     ocr_engine: str | OcrEngine = "null"  # engine name, or an engine instance
     canvas_width: int = 1404           # reMarkable 2 panel width in px
 

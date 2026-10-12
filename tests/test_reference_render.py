@@ -108,7 +108,8 @@ def test_render_pages_manifest_and_state(reference_sheet):
 
     emb_manifest, emb_tasks = read_state(pdf.read_bytes())
     assert emb_manifest == manifest and emb_tasks == tasks
-    assert emb_tasks["note"]["stem"] == STEM
+    assert emb_tasks["note"]["stem"] == STEM and emb_tasks["note"]["source"] == REFERENCE_NOTE
+    assert "source" not in manifest["note"]
     assert sorted(emb_tasks["tasks"]) == [f"RF-C{i}" for i in range(1, 7)]
     assert emb_tasks["tasks"]["RF-C1"]["bucket"] == "refnotes"
 
@@ -140,3 +141,52 @@ def test_cli_writes_pdf_and_manifest(tmp_path, reference_sheet):
     rc = main([str(vault / "Reference" / f"{STEM}.md"), "--vault", str(vault), "--out", str(out),
                "--date", "2026-10-12", "--manifest", str(tmp_path / "o.manifest.json")])
     assert rc == 0 and out.exists() and (tmp_path / "o.manifest.json").exists()
+
+
+@needs_chromium
+def test_body_overflow_guard_measures_the_print_column(tmp_path):
+    from playwright.sync_api import sync_playwright
+
+    from remarkable_gtd.gen.generate import _env
+    from remarkable_gtd.gen.reference import _body_html, _check_body_fits
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": 596, "height": 795})
+        page.set_content(_body_html(_env(), "T", "plain text", tmp_path))
+        _check_body_fits(page)
+        page.evaluate("document.querySelector('.note').insertAdjacentHTML('beforeend', '<div style=\"width:560px\">x</div>')")
+        with pytest.raises(RuntimeError, match="print column"):   # fits the viewport, not the column
+            _check_body_fits(page)
+        browser.close()
+
+
+@needs_chromium
+def test_unbreakable_content_wraps_instead_of_overflowing(tmp_path):
+    from remarkable_gtd.gen.reference import render_reference
+
+    note = tmp_path / "Wide.md"
+    note.write_text("# Wide\n\n" + "x" * 400 + "\n\n| " + " | ".join(f"c{i}" for i in range(12)) + " |\n"
+                    + "|" + "---|" * 12 + "\n| " + " | ".join("y" * 30 for _ in range(12)) + " |\n", encoding="utf-8")
+    assert render_reference(note, tmp_path, tmp_path / "w.pdf", the_date=None)["page_count"] >= 2
+
+
+@needs_chromium
+def test_front_matter_hidden_and_title_falls_back_to_stem(tmp_path):
+    import pymupdf
+
+    from remarkable_gtd.gen.reference import render_reference
+
+    note = tmp_path / "No heading.md"
+    note.write_text("---\ntags: [secret-tag]\n---\nJust a paragraph.\n", encoding="utf-8")
+    result = render_reference(note, tmp_path, tmp_path / "n.pdf")
+    text = "".join(p.get_text() for p in pymupdf.open(str(tmp_path / "n.pdf")))
+    assert "secret-tag" not in text and "Just a paragraph." in text
+    assert result["manifest"]["note"]["title"] == "No heading"
+    assert result["tasks"]["note"]["source"].startswith("---")      # the source rides in the tasks doc
+
+
+def test_markdown_image_path_is_url_decoded(tmp_path):
+    seen = []
+    render_markdown("![](attachments/my%20pic.png)", lambda target, width: seen.append(target) or "")
+    assert seen == ["my pic.png"]

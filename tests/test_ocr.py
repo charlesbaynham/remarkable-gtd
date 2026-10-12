@@ -453,7 +453,11 @@ def test_reference_prompt_carries_the_page_and_the_rules():
     assert "Flat hot water system" in prompt and "page 2 of 5" in prompt
     assert "immersion heater trips the breaker" in prompt and "2026-10-12" in prompt
     assert "handwriting alone" in prompt                      # side-by-side layout is explained
-    assert "EXACTLY as printed" in prompt and "understood = false" in prompt
+    assert "copied EXACTLY" in prompt and "never spanning a line break" in prompt
+    assert "understood = false" in prompt
+    assert "markdown source" in prompt and "(not available)" in prompt
+    with_source = ocr.build_reference_prompt({**REF_NOTE, "source": "The **immersion** heater"})
+    assert "The **immersion** heater" in with_source
     assert "handwriting alone" not in ocr.build_reference_prompt({**REF_NOTE, "side_by_side": False})
     assert "notes page" in ocr.build_reference_prompt({**REF_NOTE, "notes_page": True})
 

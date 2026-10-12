@@ -18,6 +18,7 @@ import io
 import json
 import re
 from datetime import date
+from html import escape
 from pathlib import Path
 
 from remarkable_gtd.common.embedded import TASKS_SCHEMA, attach_state
@@ -58,8 +59,6 @@ class Attachments:
         self.root = (Path(vault_root) / "attachments").resolve()
 
     def embed(self, target: str, width: int | None = None) -> str:
-        from html import escape
-
         name = target.split("#", 1)[0].strip()
         label = escape(name)
         suffix = Path(name).suffix.lower()
@@ -115,17 +114,24 @@ def _measure(page) -> tuple[dict, dict]:
 
 
 def _check_body_fits(page) -> None:
-    """Fail loudly if body content spills past the right margin (Chromium would shrink the page)."""
-    right_limit = page.evaluate(
-        "document.documentElement.clientWidth - parseFloat(getComputedStyle(document.querySelector('.note')).paddingRight)"
-    )
-    overflow = page.evaluate(
-        """() => Math.max(0, ...[...document.querySelectorAll('.note *')]
-                .map(el => el.getBoundingClientRect().right))"""
+    """Fail loudly if body content spills past the print column (Chromium would shrink the page).
+
+    On screen the note is as wide as the viewport, so it is first narrowed to
+    the column the @page margins leave in print.
+    """
+    right_limit, overflow = page.evaluate(
+        """() => {
+            const note = document.querySelector('.note');
+            note.style.width = 'calc(157.8mm - 2 * var(--m-side))';
+            const right = note.getBoundingClientRect().right;
+            const widest = Math.max(0, ...[...note.querySelectorAll('*')]
+                .map(el => el.getBoundingClientRect().right));
+            return [right, widest];
+        }"""
     )
     if overflow > right_limit + 2:
         raise RuntimeError(
-            f"note content extends to {overflow:.0f}px, past the {right_limit:.0f}px text column; "
+            f"note content extends to {overflow:.0f}px, past the {right_limit:.0f}px print column; "
             "Chromium would shrink-to-fit and the manifest would no longer match the printed page"
         )
 
@@ -220,7 +226,8 @@ def render_reference(
     tasks = {
         "schema": TASKS_SCHEMA,
         "date": the_date.strftime("%Y-%m-%d"),
-        "note": note,
+        # The source rides along so a scanned sheet can quote it to the AI.
+        "note": {**note, "source": markdown},
         "tasks": {r["id"]: {"id": r["id"], "act": "", "capture": True, "bucket": BUCKET_NOTES}
                   for r in notes["rows"]},
     }

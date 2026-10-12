@@ -33,11 +33,13 @@ def main(argv=None) -> int:
     )
     args = p.parse_args(argv)
 
-    from remarkable_gtd.scan.manifest_io import load_manifest
+    from remarkable_gtd.scan.manifest_io import is_reference_manifest, load_manifest
     from remarkable_gtd.scan.pipeline import ScanConfig, run_scan
 
     manifest = load_manifest(args.manifest)
     manifest["_path"] = str(args.manifest)
+    if is_reference_manifest(manifest):
+        p.error("this is a reference-note manifest: scan the whole sheet with gtd-scan-pdf")
 
     cfg = ScanConfig(ocr_engine=args.ocr)
     decisions = run_scan(Path(args.image), manifest, cfg, page_key=args.page)

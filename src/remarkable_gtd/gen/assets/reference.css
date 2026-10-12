@@ -84,7 +84,13 @@ html.chrome, html.chrome body { background: transparent; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ref .notes-hint { font-size: 9.5pt; font-weight: 500; line-height: 1.4; margin: 0 0 4mm; }
-.ref .notes-body .row { border-bottom: var(--pen); }
+.ref .notes-body .row { border-bottom: var(--pen); padding: 0; }
+/* The write-in area is the whole row right of the rail, and the row's own
+   rule is its one line: ink anywhere in the row lands inside the act ROI. */
+.ref .notes-body .row-top { align-items: stretch; }
+.ref .notes-body .act-wrap { display: flex; }
+.ref .notes-body .act.cap { flex: 1; height: auto; border-bottom: 0; }
+.ref .notes-body .rail { padding: 1.5mm 0; }
 /* Notes-page row QRs are larger than the daily sheet's: they sit on the
    body area's plain white and cost nothing, and decode more reliably. */
 .ref .rail { width: 14mm; }
