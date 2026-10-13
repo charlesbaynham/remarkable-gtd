@@ -197,11 +197,15 @@ Reasoning is ~44% of the price of a `read` and roughly triples its latency
 reading glyphs, not thinking. On `interpret`, which reasons about the vault,
 it does visible work.
 
-⚠️ **Reasoning tokens are charged against `max_tokens`**, so enabling it
-*without* raising the budget truncates the reply mid-JSON
-(`finish_reason: length`) and the AI agent's operations are lost. The engine
-adds `REASONING_TOKEN_HEADROOM` on top of the answer budget whenever reasoning
-is on.
+⚠️ **Reasoning tokens are charged against `max_tokens`**, so a budget sized
+for the answer alone truncates the reply (`finish_reason: length`): mid-JSON,
+losing the AI agent's operations, or mid-thought, where a transcription comes
+back as a fragment of the model's thinking. `off` only means no `reasoning`
+block is sent — a model that thinks by default (the table above shows ~285
+reasoning tokens on a `read`) still does. The engine therefore always adds
+`REASONING_TOKEN_HEADROOM` on top of the answer budget, and refuses a reply
+whose `finish_reason` is `length` (an error, reported as a page that could not
+be scanned) rather than passing the fragment on as handwriting.
 
 **Tracing.** Set `OPENROUTER_TRACE_DIR` and every call writes
 `NNN-{read,interpret}.json` — the prompt, the model, the reasoning block sent,

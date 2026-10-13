@@ -353,7 +353,9 @@ def test_read_does_not_reason_by_default(monkeypatch):
     monkeypatch.delenv("OPENROUTER_READ_REASONING", raising=False)
     body = _capture(monkeypatch, "read")
     assert "reasoning" not in body
-    assert body["max_tokens"] == ocr.READ_ANSWER_TOKENS
+    # Room for thinking is there regardless: a model that thinks by default
+    # does so with no reasoning block, and 300 tokens in all ran out.
+    assert body["max_tokens"] == ocr.READ_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM
 
 
 def test_interpret_reasons_by_default_with_room_for_the_answer(monkeypatch):
@@ -375,7 +377,7 @@ def test_interpret_reasoning_can_be_turned_off(monkeypatch):
     monkeypatch.setenv("OPENROUTER_REASONING", "off")
     body = _capture(monkeypatch, "interpret")
     assert "reasoning" not in body
-    assert body["max_tokens"] == ocr.AI_ANSWER_TOKENS
+    assert body["max_tokens"] == ocr.AI_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM
 
 
 def test_trace_dir_keeps_prompt_crop_and_thinking(monkeypatch, tmp_path):
@@ -488,3 +490,73 @@ def test_openrouter_interpret_reference_request_and_reply(monkeypatch):
     schema = captured["body"]["response_format"]["json_schema"]
     assert schema["strict"] is True and schema["schema"] == ocr.REF_AI_SCHEMA
     assert "Flat hot water system" in captured["body"]["messages"][0]["content"][0]["text"]
+
+
+# --- a reply cut off at max_tokens is not a reading -------------------------
+
+
+def _reply_engine(monkeypatch, choice, usage=None):
+    """An engine whose one request gets ``choice`` back, as OpenRouter would."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+
+    def fake_urlopen(req, timeout=None):
+        reply = {"choices": [choice]}
+        if usage is not None:
+            reply["usage"] = usage
+        return _FakeResponse(json.dumps(reply).encode("utf-8"))
+
+    return mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen)
+
+
+def test_read_refuses_a_reply_cut_off_at_max_tokens(monkeypatch):
+    # What 2026-10-13 returned: thinking ate the budget and a fragment of it
+    # came back as the "transcription", which became a project name.
+    choice = {
+        "finish_reason": "length",
+        "native_finish_reason": "MAX_TOKENS",
+        "message": {"content": "\" or something? No, it's handwriting.\n"},
+    }
+    with _reply_engine(monkeypatch, choice):
+        with pytest.raises(RuntimeError, match="cut off at max_tokens"):
+            ocr.OpenRouterEngine().read(np.zeros((10, 10), np.uint8), hint="project")
+
+
+def test_read_accepts_a_reply_that_stopped_even_with_every_token_used(monkeypatch):
+    choice = {"finish_reason": "stop", "message": {"content": "DOM"}}
+    usage = {"completion_tokens": ocr.READ_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM}
+    with _reply_engine(monkeypatch, choice, usage):
+        assert ocr.OpenRouterEngine().read(np.zeros((10, 10), np.uint8)) == "DOM"
+
+
+def test_read_treats_a_full_token_count_with_no_finish_reason_as_cut_off(monkeypatch):
+    choice = {"message": {"content": "partial"}}
+    usage = {"completion_tokens": ocr.READ_ANSWER_TOKENS + ocr.REASONING_TOKEN_HEADROOM}
+    with _reply_engine(monkeypatch, choice, usage):
+        with pytest.raises(RuntimeError, match="cut off"):
+            ocr.OpenRouterEngine().read(np.zeros((10, 10), np.uint8))
+
+
+def test_read_without_finish_reason_or_usage_is_accepted(monkeypatch):
+    # Providers that report neither must keep working.
+    with _reply_engine(monkeypatch, {"message": {"content": "Call Dave"}}):
+        assert ocr.OpenRouterEngine().read(np.zeros((10, 10), np.uint8)) == "Call Dave"
+
+
+def test_interpret_names_truncation_rather_than_bad_json(monkeypatch):
+    choice = {"finish_reason": "length", "message": {"content": '{"understood": tr'}}
+    with _reply_engine(monkeypatch, choice):
+        with pytest.raises(RuntimeError, match="cut off at max_tokens"):
+            ocr.OpenRouterEngine().interpret(np.zeros((10, 10), np.uint8), {"id": "NA-01"})
+
+
+def test_single_line_regions_fold_line_breaks(monkeypatch):
+    # A newline in an action or a project name would split a table row.
+    assert ocr.clean_reply("Order\n * motor   mounts", single_line=True) == "Order * motor mounts"
+    assert ocr.clean_reply("a\nb") == "a\nb"  # the default keeps them
+    choice = {"finish_reason": "stop", "message": {"content": "New motor\ndriver"}}
+    with _reply_engine(monkeypatch, choice):
+        eng = ocr.OpenRouterEngine()
+        img = np.zeros((10, 10), np.uint8)
+        assert eng.read(img, hint="capture") == "New motor driver"
+        assert eng.read(img, hint="block") == "New motor\ndriver"
+        assert eng.read(img, hint="goal") == "New motor\ndriver"
