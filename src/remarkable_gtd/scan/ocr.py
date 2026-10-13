@@ -62,9 +62,17 @@ DEFAULT_READ_REASONING = "off"
 READ_ANSWER_TOKENS = 300
 AI_ANSWER_TOKENS = 900
 # Reasoning tokens are charged against max_tokens, so a budget sized for the
-# answer alone truncates it mid-JSON once reasoning is on (finish_reason
-# "length"), and the AI agent's operations are lost.
+# answer alone truncates it (finish_reason "length"): mid-JSON for the AI
+# agent, whose operations are then lost, and mid-thought for a transcription,
+# where the half-finished thinking comes back as the "text". The room is added
+# whether or not a reasoning block is sent: a model that thinks by default
+# (Gemini 3.x) does so even when reasoning is "off", and with 300 tokens in
+# total it spent ~285 of them thinking.
 REASONING_TOKEN_HEADROOM = 2500
+
+# Region kinds whose reply may span several lines; every other one is a
+# single line, so a newline in the reply is noise.
+_MULTILINE_HINTS = frozenset({"block", "goal"})
 
 
 def _reasoning_block(explicit, env_var: str, default: str) -> dict | None:
@@ -605,8 +613,12 @@ def build_prompt(hint: str | None, context: str | None) -> str:
     return prompt
 
 
-def clean_reply(text: str) -> str:
-    """Normalise a model reply to the transcribed text (or '')."""
+def clean_reply(text: str, single_line: bool = False) -> str:
+    """Normalise a model reply to the transcribed text (or '').
+
+    ``single_line`` folds any line breaks into spaces, for regions that hold
+    one line: a newline inside a cell would split a table row downstream.
+    """
     text = (text or "").strip()
     if not text:
         return ""
@@ -616,6 +628,8 @@ def clean_reply(text: str) -> str:
     text = re.sub(r"^```[a-z]*\s*|\s*```$", "", text).strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'“”":
         text = text[1:-1].strip()
+    if single_line:
+        return re.sub(r"\s+", " ", text).strip()
     return re.sub(r"[ \t]+", " ", text).strip()
 
 
@@ -714,7 +728,7 @@ class OpenRouterEngine:
         payload = {
             "model": model,
             "temperature": 0,
-            "max_tokens": answer_tokens + (REASONING_TOKEN_HEADROOM if reasoning else 0),
+            "max_tokens": answer_tokens + REASONING_TOKEN_HEADROOM,
             "messages": [
                 {
                     "role": "user",
@@ -769,6 +783,30 @@ class OpenRouterEngine:
                     continue
         raise RuntimeError(f"OpenRouter request failed: {last_err}")
 
+    @staticmethod
+    def _check_complete(data: dict, payload: dict) -> None:
+        """Raise if the model ran out of tokens before it finished replying.
+
+        A reply cut off at ``max_tokens`` still has content, and it can look
+        like an answer (a model that spends its budget thinking leaks the
+        thought into ``content``), so it must never be handed on as one.
+        ``finish_reason == "stop"`` means the model ended its reply itself,
+        even when it used every token.
+        """
+        choice = (data.get("choices") or [{}])[0]
+        finish = choice.get("finish_reason")
+        used = (data.get("usage") or {}).get("completion_tokens")
+        limit = payload.get("max_tokens")
+        ran_out = finish == "length" or (
+            finish is None and isinstance(used, int) and isinstance(limit, int) and used >= limit
+        )
+        if ran_out:
+            raise RuntimeError(
+                f"OpenRouter reply was cut off at max_tokens={limit} "
+                f"(finish_reason={finish!r}, completion_tokens={used}); the model "
+                "ran out of tokens before it finished, so the text is not a reading"
+            )
+
     def read(self, image, hint=None, context=None) -> str:
         payload = self._payload(
             self.model, build_prompt(hint, context), image,
@@ -776,13 +814,14 @@ class OpenRouterEngine:
         )
         data = self._post(payload)
         self.requests_made += 1
+        self._check_complete(data, payload)
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"OpenRouter reply had no content: {json.dumps(data)[:300]}") from exc
         if isinstance(content, list):  # some providers return content parts
             content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
-        return clean_reply(content)
+        return clean_reply(content, single_line=(hint or "line") not in _MULTILINE_HINTS)
 
     def _structured(self, prompt: str, image, schema_name: str, schema: dict) -> dict:
         """One strict-JSON-schema completion, parsed and sanity-checked."""
@@ -795,6 +834,7 @@ class OpenRouterEngine:
         )
         data = self._post(payload)
         self.requests_made += 1
+        self._check_complete(data, payload)
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
