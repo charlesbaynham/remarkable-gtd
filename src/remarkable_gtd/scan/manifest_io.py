@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from remarkable_gtd.common.schema import MANIFEST_SCHEMA
+from remarkable_gtd.common.schema import MANIFEST_SCHEMA, REFERENCE_DOC
 
 
 def load_manifest(path: Path | str) -> dict:
@@ -61,3 +61,8 @@ def get_page(manifest: dict, key: str) -> dict:
             f"Page key {key!r} not in manifest. Available keys: {available}"
         )
     return pages[key]
+
+
+def is_reference_manifest(manifest: dict) -> bool:
+    """Does this manifest describe a reference-note sheet rather than the daily sheet?"""
+    return manifest.get("doc") == REFERENCE_DOC

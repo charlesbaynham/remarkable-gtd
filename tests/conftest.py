@@ -162,3 +162,59 @@ def warp_image(img_rgb: np.ndarray, angle_deg: float = 2.0, keystone: float = 0.
     dst = np.float32([[dx, 0], [pw - dx, 0], [0, ph], [pw, ph]])
     P = cv2.getPerspectiveTransform(src, dst)
     return cv2.warpPerspective(out, P, (pw, ph), borderValue=(255, 255, 255))
+
+
+REFERENCE_NOTE = """---
+tags: [plumbing]
+---
+# Flat hot water system
+
+Goal: get the **hot water** back. See [[Kitchen refit]] and [[Boiler manual|the manual]].
+
+## Findings
+
+""" + "\n\n".join(
+    f"Paragraph {i}. The cylinder was installed in 2009 and the immersion heater trips the "
+    "breaker when the thermostat sticks; the plumber suggested replacing the thermostat first."
+    for i in range(1, 26)
+) + """
+
+![[diagram.png]]
+
+![[gone.png]]
+
+## Checklist
+
+- [ ] Ring the plumber
+- [x] Photograph the label
+
+| Part | Cost |
+|------|------|
+| Thermostat | 12 |
+
+```
+systemctl status boiler
+```
+"""
+
+
+@pytest.fixture(scope="session")
+def reference_sheet(tmp_path_factory):
+    """Render a multi-page note once per session -> (pdf_path, result dict, vault_root)."""
+    if not _chromium_available():
+        pytest.skip("Playwright Chromium not installed")
+    from PIL import Image, ImageDraw
+
+    from remarkable_gtd.gen.reference import render_reference
+
+    vault = tmp_path_factory.mktemp("vault")
+    (vault / "Reference").mkdir()
+    (vault / "attachments").mkdir()
+    diagram = Image.new("RGB", (2400, 1200), "white")
+    ImageDraw.Draw(diagram).rectangle((50, 50, 2350, 1150), outline="black", width=20)
+    diagram.save(vault / "attachments" / "diagram.png")
+    note = vault / "Reference" / "Flat hot water system.md"
+    note.write_text(REFERENCE_NOTE, encoding="utf-8")
+    pdf = vault / "hw.pdf"
+    result = render_reference(note, vault, pdf, the_date=date(2026, 10, 12))
+    return pdf, result, vault

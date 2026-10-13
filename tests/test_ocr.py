@@ -430,3 +430,61 @@ def test_build_ai_prompt_without_a_suggestion_is_still_valid():
     prompt = ocr.build_ai_prompt({"bucket": "next", "act": "x"})
     assert "suggestion, not an instruction" not in prompt
     assert "only writer for this row" in prompt
+
+
+# ---- reference notes (gtd.airef/1) ------------------------------------------------
+
+REF_NOTE = {
+    "stem": "Flat hot water system", "title": "Flat hot water system", "page_no": 2,
+    "page_count": 5, "page_text": "The immersion heater trips the breaker.", "side_by_side": True,
+}
+
+
+def test_reference_schema_is_flat_and_strict():
+    op = ocr.REF_AI_SCHEMA["properties"]["operations"]["items"]
+    assert set(op["required"]) == set(op["properties"]) == {"op", "text", "old", "new", "heading"}
+    assert op["additionalProperties"] is False
+    assert op["properties"]["op"]["enum"] == ["reference_append", "reference_edit", "capture"]
+    assert ocr.REF_AI_SCHEMA_VERSION == "gtd.airef/1"
+
+
+def test_reference_prompt_carries_the_page_and_the_rules():
+    prompt = ocr.build_reference_prompt(REF_NOTE, "2026-10-12")
+    assert "Flat hot water system" in prompt and "page 2 of 5" in prompt
+    assert "immersion heater trips the breaker" in prompt and "2026-10-12" in prompt
+    assert "handwriting alone" in prompt                      # side-by-side layout is explained
+    assert "copied EXACTLY" in prompt and "never spanning a line break" in prompt
+    assert "understood = false" in prompt
+    assert "markdown source" in prompt and "(not available)" in prompt
+    with_source = ocr.build_reference_prompt({**REF_NOTE, "source": "The **immersion** heater"})
+    assert "The **immersion** heater" in with_source
+    assert "handwriting alone" not in ocr.build_reference_prompt({**REF_NOTE, "side_by_side": False})
+    assert "notes page" in ocr.build_reference_prompt({**REF_NOTE, "notes_page": True})
+
+
+def test_null_engine_interpret_reference_is_none():
+    assert ocr.NullEngine().interpret_reference(np.zeros((4, 4), np.uint8), REF_NOTE) is None
+
+
+def test_openrouter_interpret_reference_request_and_reply(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    captured: dict = {}
+    reply_body = {
+        "handwriting": "check with Dave", "understood": True, "confidence": 0.8, "note": "margin",
+        "operations": [{"op": "reference_append", "text": "check with Dave",
+                        "old": None, "new": None, "heading": None}],
+    }
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        reply = {"choices": [{"message": {"content": json.dumps(reply_body)}}]}
+        return _FakeResponse(json.dumps(reply).encode("utf-8"))
+
+    with mock.patch.object(ocr.urllib.request, "urlopen", fake_urlopen):
+        eng = ocr.OpenRouterEngine()
+        result = eng.interpret_reference(np.full((60, 400), 255, dtype=np.uint8), REF_NOTE, "2026-10-12")
+
+    assert result == reply_body and eng.requests_made == 1
+    schema = captured["body"]["response_format"]["json_schema"]
+    assert schema["strict"] is True and schema["schema"] == ocr.REF_AI_SCHEMA
+    assert "Flat hot water system" in captured["body"]["messages"][0]["content"][0]["text"]
